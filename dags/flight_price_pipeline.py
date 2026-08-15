@@ -24,19 +24,19 @@ from airflow.providers.mysql.hooks.mysql import MySqlHook
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.sdk import Param, dag, task
 
+from flight_pipeline.config import get_config
+
 log = logging.getLogger(__name__)
 
-MYSQL_CONN_ID = "mysql_staging"
-POSTGRES_CONN_ID = "postgres_analytics"
+# Everything tunable comes from config/pipeline.yml. Nothing in this file is
+# a magic number, and no path is hardcoded to /opt/airflow — the config module
+# resolves them from the project root, so the same code runs in the container,
+# in CI and in a bare checkout.
+CONFIG = get_config()
 
-DEFAULT_CSV = os.getenv(
-    "SOURCE_CSV_PATH",
-    "/opt/airflow/include/data/raw/Flight_Price_Dataset_of_Bangladesh.csv",
-)
-
-# Reference data: small, curated, tracked in git, and read by EVERY run —
-# not a test fixture. Hence include/data/reference/ rather than fixtures/.
-REF_AIRPORTS_CSV = "/opt/airflow/include/data/reference/ref_airports.csv"
+MYSQL_CONN_ID = CONFIG.connections.mysql
+POSTGRES_CONN_ID = CONFIG.connections.postgres
+INSERT_BATCH_SIZE = CONFIG.ingest_batch_size
 
 # Source header -> landing column. The source names carry spaces, ampersands
 # and parentheses ("Tax & Surcharge (BDT)") which are hostile as SQL
@@ -73,7 +73,6 @@ REQUIRED_SOURCE_COLUMNS = [
     "Total Fare (BDT)",
 ]
 
-INSERT_BATCH_SIZE = 5_000
 
 
 @dag(
@@ -83,21 +82,34 @@ INSERT_BATCH_SIZE = 5_000
     catchup=False,
     max_active_runs=1,  # full-refresh tables — concurrent runs would fight
     tags=["flights", "etl", "kpi"],
-    template_searchpath="/opt/airflow/include/sql",
+    template_searchpath=str(CONFIG.paths.sql),
     default_args={
         "retries": 2,
         "retry_exponential_backoff": True,
     },
+    # Constants the SQL needs but which are NOT per-run tunable. Macros rather
+    # than params, because params are the trigger-time override surface and
+    # putting a regex there invites someone to edit it in the UI.
+    #
+    # dt_regex in particular was previously copy-pasted at eight call sites
+    # across two files. A typo in one copy would have silently disabled that
+    # one date check while every test still passed.
+    user_defined_macros={
+        "dt_regex": CONFIG.validation.datetime_regex,
+        "dt_format": CONFIG.validation.datetime_format,
+        "markup_factor": CONFIG.business_rules.fare_markup_factor,
+        "regular_season": CONFIG.business_rules.regular_season_label,
+    },
     params={
-        # Overridable at trigger time, which is how the same DAG runs against
-        # the corrupted fixture to prove the quarantine path actually fires:
+        # The trigger-time override surface. source_csv_path is what lets the
+        # same DAG run against the corrupted fixture with no code change:
         #   {"source_csv_path": ".../fixtures/corrupted_sample.csv"}
-        "source_csv_path": Param(DEFAULT_CSV, type="string"),
+        "source_csv_path": Param(str(CONFIG.paths.source_csv), type="string"),
         "fare_tolerance": Param(
-            float(os.getenv("FARE_TOLERANCE_BDT", "0.01")), type="number"
+            CONFIG.validation.fare_tolerance_bdt, type="number", minimum=0
         ),
         "reject_rate_threshold": Param(
-            float(os.getenv("REJECT_RATE_THRESHOLD", "0.05")),
+            CONFIG.validation.reject_rate_threshold,
             type="number",
             minimum=0,
             maximum=1,
@@ -216,10 +228,11 @@ def flight_price_pipeline():
         Independent of the CSV ingest, so it runs alongside it rather than
         after it.
         """
-        if not os.path.isfile(REF_AIRPORTS_CSV):
-            raise FileNotFoundError(f"reference data missing: {REF_AIRPORTS_CSV}")
+        ref_path = CONFIG.paths.reference_airports
+        if not ref_path.is_file():
+            raise FileNotFoundError(f"reference data missing: {ref_path}")
 
-        with open(REF_AIRPORTS_CSV, newline="", encoding="utf-8") as fh:
+        with open(ref_path, newline="", encoding="utf-8") as fh:
             rows = [
                 (
                     r["airport_code"].strip().upper(),

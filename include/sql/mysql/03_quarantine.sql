@@ -93,8 +93,8 @@ SELECT batch_id, raw_row_num, 'UNPARSEABLE_DATE',
        JSON_OBJECT('departure', departure_datetime, 'arrival', arrival_datetime)
 FROM raw_flight_prices
 WHERE batch_id = '{{ run_id }}'
-  AND (   STR_TO_DATE(IF(departure_datetime REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}$', departure_datetime, NULL), '%Y-%m-%d %H:%i:%s') IS NULL
-       OR STR_TO_DATE(IF(arrival_datetime   REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}$', arrival_datetime,   NULL), '%Y-%m-%d %H:%i:%s') IS NULL);
+  AND (   STR_TO_DATE(IF(departure_datetime REGEXP '{{ dt_regex }}', departure_datetime, NULL), '{{ dt_format }}') IS NULL
+       OR STR_TO_DATE(IF(arrival_datetime   REGEXP '{{ dt_regex }}', arrival_datetime,   NULL), '{{ dt_format }}') IS NULL);
 
 -- ---------------------------------------------------------------------
 -- 5. Arrival at or before departure
@@ -105,10 +105,10 @@ SELECT batch_id, raw_row_num, 'ARRIVAL_BEFORE_DEPARTURE',
        JSON_OBJECT('departure', departure_datetime, 'arrival', arrival_datetime)
 FROM raw_flight_prices
 WHERE batch_id = '{{ run_id }}'
-  AND STR_TO_DATE(IF(departure_datetime REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}$', departure_datetime, NULL), '%Y-%m-%d %H:%i:%s') IS NOT NULL
-  AND STR_TO_DATE(IF(arrival_datetime   REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}$', arrival_datetime,   NULL), '%Y-%m-%d %H:%i:%s') IS NOT NULL
-  AND STR_TO_DATE(IF(arrival_datetime   REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}$', arrival_datetime,   NULL), '%Y-%m-%d %H:%i:%s')
-      <= STR_TO_DATE(IF(departure_datetime REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}$', departure_datetime, NULL), '%Y-%m-%d %H:%i:%s');
+  AND STR_TO_DATE(IF(departure_datetime REGEXP '{{ dt_regex }}', departure_datetime, NULL), '{{ dt_format }}') IS NOT NULL
+  AND STR_TO_DATE(IF(arrival_datetime   REGEXP '{{ dt_regex }}', arrival_datetime,   NULL), '{{ dt_format }}') IS NOT NULL
+  AND STR_TO_DATE(IF(arrival_datetime   REGEXP '{{ dt_regex }}', arrival_datetime,   NULL), '{{ dt_format }}')
+      <= STR_TO_DATE(IF(departure_datetime REGEXP '{{ dt_regex }}', departure_datetime, NULL), '{{ dt_format }}');
 
 -- ---------------------------------------------------------------------
 -- 6. Source == destination
@@ -177,7 +177,7 @@ WHERE batch_id = '{{ run_id }}'
       > {{ params.fare_tolerance }}
   -- ... and is NOT the known x1.2 markup
   AND ABS(CAST(total_fare_bdt AS DECIMAL(20,10))
-          - 1.2 * (CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10))))
+          - {{ markup_factor }} * (CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10))))
       > {{ params.fare_tolerance }};
 
 -- ---------------------------------------------------------------------
