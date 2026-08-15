@@ -1,0 +1,21 @@
+airport_code,airport_name,is_origin,is_destination
+BKK,"Suvarnabhumi Airport, Bangkok",0,1
+BZL,Barisal Airport,1,1
+CCU,"Netaji Subhas Chandra Bose International Airport, Kolkata",0,1
+CGP,"Shah Amanat International Airport, Chittagong",1,1
+CXB,Cox's Bazar Airport,1,1
+DAC,"Hazrat Shahjalal International Airport, Dhaka",1,1
+DEL,"Indira Gandhi International Airport, Delhi",0,1
+DOH,"Hamad International Airport, Doha",0,1
+DXB,Dubai International Airport,0,1
+IST,Istanbul Airport,0,1
+JED,"King Abdulaziz International Airport, Jeddah",0,1
+JFK,"John F. Kennedy International Airport, New York",0,1
+JSR,Jessore Airport,1,1
+KUL,Kuala Lumpur International Airport,0,1
+LHR,London Heathrow Airport,0,1
+RJH,"Shah Makhdum Airport, Rajshahi",1,1
+SIN,Singapore Changi Airport,0,1
+SPD,Saidpur Airport,1,1
+YYZ,Toronto Pearson International Airport,0,1
+ZYL,"Osmani International Airport, Sylhet",1,1
