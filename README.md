@@ -162,8 +162,14 @@ fills and the threshold trips.
 Validity of an airport code is membership in a set, not a pattern — `XXX` is
 perfectly well-formed and not an airport. That set is **data**, so it lives in
 `ref_airports` (20 airports, 8 of which serve as origins), seeded each run from
-the tracked `include/data/fixtures/ref_airports.csv`. Correcting it is an
+the tracked `include/data/reference/ref_airports.csv`. Correcting it is an
 `UPDATE`, not a code change and a deploy.
+
+It lives under `reference/` rather than `fixtures/` deliberately: every
+production run reads it, so filing it as test material would misrepresent what
+it is. The three subdirectories of `include/data/` each mean something
+different — bulk source (untracked), curated lookup data (tracked), and test
+input (tracked).
 
 ---
 
@@ -238,8 +244,9 @@ the error handling would be untested again.
 ```
 dags/            DAG definitions
 include/
-  data/raw/      source CSV (gitignored)
-  data/fixtures/ corrupted sample + airport reference data (tracked)
+  data/raw/       bulk source extracts — gitignored
+  data/reference/ curated lookup data — tracked, read by every run
+  data/fixtures/  deliberately broken input — tracked, test material only
   sql/mysql/     staging DDL + transformations
   sql/postgres/  analytics DDL + KPI queries
 tests/           DAG-integrity and unit tests

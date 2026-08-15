@@ -24,7 +24,7 @@ from flight_price_pipeline import (  # noqa: E402
 )
 
 FIXTURE = "/opt/airflow/include/data/fixtures/corrupted_sample.csv"
-REF_AIRPORTS = "/opt/airflow/include/data/fixtures/ref_airports.csv"
+REF_AIRPORTS = "/opt/airflow/include/data/reference/ref_airports.csv"
 
 
 @pytest.fixture(scope="module")

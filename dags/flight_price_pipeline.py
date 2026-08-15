@@ -34,8 +34,9 @@ DEFAULT_CSV = os.getenv(
     "/opt/airflow/include/data/raw/Flight_Price_Dataset_of_Bangladesh.csv",
 )
 
-# Reference data, not source data — tracked in git and seeded every run.
-REF_AIRPORTS_CSV = "/opt/airflow/include/data/fixtures/ref_airports.csv"
+# Reference data: small, curated, tracked in git, and read by EVERY run —
+# not a test fixture. Hence include/data/reference/ rather than fixtures/.
+REF_AIRPORTS_CSV = "/opt/airflow/include/data/reference/ref_airports.csv"
 
 # Source header -> landing column. The source names carry spaces, ampersands
 # and parentheses ("Tax & Surcharge (BDT)") which are hostile as SQL
