@@ -1,0 +1,47 @@
+# ---- data: never commit the dataset or any derived extract ----
+# NOTE ordering + the '**' form are both load-bearing. Excluding the
+# DIRECTORY (`include/data/`) makes git skip it entirely, so no later
+# '!' rule inside it can ever take effect. We exclude the CONTENTS
+# instead, then re-admit the fixtures dir and its files, in that order.
+*.parquet
+*.xlsx
+*.csv
+include/data/**
+!include/data/fixtures/
+!include/data/fixtures/**
+
+# ---- secrets ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+kaggle.json
+
+# ---- airflow runtime ----
+logs/
+airflow.db
+airflow.cfg
+airflow-webserver.pid
+standalone_admin_password.txt
+config/airflow.cfg
+
+# ---- python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ---- dbt (if/when added) ----
+target/
+dbt_packages/
+.user.yml
+
+# ---- editor / os ----
+.vscode/
+.idea/
+.DS_Store
+*.swp

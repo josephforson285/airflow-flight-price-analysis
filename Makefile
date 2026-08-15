@@ -1,0 +1,48 @@
+.DEFAULT_GOAL := help
+SHELL := /bin/bash
+COMPOSE := docker compose
+
+.PHONY: help init build up down restart ps logs mysql psql test dag-test clean nuke
+
+help:  ## Show this help
+	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
+	  | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+
+init:  ## Create .env from the template (does not overwrite)
+	@test -f .env && echo ".env exists, leaving it" || (cp .env.example .env && chmod 600 .env && echo "created .env — edit the passwords")
+
+build:  ## Build the extended Airflow image
+	$(COMPOSE) build
+
+up:  ## Start the whole stack in the background
+	$(COMPOSE) up -d
+	@echo "Airflow UI -> http://localhost:$${AIRFLOW_UI_PORT:-8080}"
+
+down:  ## Stop the stack, keep the data volumes
+	$(COMPOSE) down
+
+restart: down up  ## Stop then start
+
+ps:  ## Show container status and health
+	$(COMPOSE) ps
+
+logs:  ## Tail logs (make logs S=airflow-scheduler for one service)
+	$(COMPOSE) logs -f $(S)
+
+mysql:  ## Open a MySQL shell on the staging database
+	$(COMPOSE) exec mysql-staging sh -c 'exec mysql -u"$$MYSQL_USER" -p"$$MYSQL_PASSWORD" "$$MYSQL_DATABASE"'
+
+psql:  ## Open a psql shell on the analytics database
+	$(COMPOSE) exec postgres-analytics sh -c 'exec psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
+
+test:  ## Run the test suite inside the Airflow image
+	$(COMPOSE) run --rm --no-deps airflow-cli bash -c 'cd /opt/airflow && python -m pytest tests -q'
+
+dag-test:  ## Parse-check every DAG (catches import errors before the scheduler does)
+	$(COMPOSE) run --rm --no-deps airflow-cli bash -c 'airflow dags list-import-errors'
+
+clean:  ## Stop and DELETE all data volumes (databases wiped)
+	$(COMPOSE) down -v
+
+nuke: clean  ## clean + remove the built image
+	-docker rmi flight-price/airflow:3.3.1
