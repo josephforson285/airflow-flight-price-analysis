@@ -18,3 +18,17 @@ RUN PYV="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_
     echo "building against Airflow ${AIRFLOW_VERSION} / Python ${PYV}" && \
     pip install --no-cache-dir -r /tmp/requirements.txt \
       --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYV}.txt"
+
+# dbt goes in an isolated virtualenv, NOT the Airflow environment.
+# Installing dbt-core alongside Airflow downgrades more-itertools and
+# pathspec (measured, see requirements-dbt.txt). Cosmos is pointed at this
+# interpreter via DBT_EXECUTABLE_PATH, so the two never share a dependency
+# tree and Airflow's pins stay exactly as its constraints file intends.
+ENV DBT_VENV=/home/airflow/dbt-venv
+ENV DBT_EXECUTABLE_PATH=${DBT_VENV}/bin/dbt
+
+COPY requirements-dbt.txt /tmp/requirements-dbt.txt
+RUN python -m venv "${DBT_VENV}" && \
+    "${DBT_VENV}/bin/pip" install --no-cache-dir --upgrade pip && \
+    "${DBT_VENV}/bin/pip" install --no-cache-dir -r /tmp/requirements-dbt.txt && \
+    "${DBT_EXECUTABLE_PATH}" --version

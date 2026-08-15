@@ -10,5 +10,10 @@ apache-airflow-providers-postgres
 # (SQLColumnCheckOperator / SQLTableCheckOperator) used by the validation tasks
 apache-airflow-providers-common-sql
 
+# Renders each dbt model as its own Airflow task, so the DAG graph shows the
+# real lineage instead of one opaque "dbt run" box. Verified to install
+# against Airflow 3.3.1 with zero changes to already-installed packages.
+astronomer-cosmos
+
 # Test suite (DAG-integrity tests + unit tests on the transform helpers)
 pytest
