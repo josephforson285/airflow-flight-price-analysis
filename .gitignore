@@ -43,11 +43,6 @@ venv/
 .ruff_cache/
 .mypy_cache/
 
-# ---- dbt (if/when added) ----
-target/
-dbt_packages/
-.user.yml
-
 # ---- editor / os ----
 .vscode/
 .idea/

@@ -5,6 +5,11 @@ An end-to-end orchestrated pipeline over the *Flight Price Dataset of Bangladesh
 
 Built with **Airflow 3.3.1** on **LocalExecutor**, entirely in Docker.
 
+> 📄 **[Full project report → `docs/REPORT.md`](docs/REPORT.md)** — pipeline
+> architecture and execution flow, per-task descriptions, KPI definitions with
+> results, and the challenges encountered. That document is the project
+> deliverable; this README is the operating manual.
+
 ---
 
 ## Quickstart
