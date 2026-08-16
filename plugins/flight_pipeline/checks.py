@@ -45,9 +45,7 @@ def evaluate_reject_rate(
     if rejected < 0:
         raise ValueError(f"negative reject count: {rejected}")
     if rejected > ingested:
-        raise ValueError(
-            f"more rejects ({rejected}) than ingested rows ({ingested})"
-        )
+        raise ValueError(f"more rejects ({rejected}) than ingested rows ({ingested})")
 
     rate = rejected / ingested
     if rate > threshold:

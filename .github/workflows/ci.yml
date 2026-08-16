@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast feedback. The pipeline package imports no Airflow, so lint and the
+  # unit suite need nothing but Python — no image build, no databases.
+  # Typical runtime: well under a minute.
+  lint-and-unit:
+    name: Lint + unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install
+        run: pip install ruff pytest pyyaml
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Format check
+        run: ruff format --check .
+
+      - name: Unit tests
+        run: pytest tests/unit -v
+
+  # Slower: needs Airflow importable to build a DagBag and assert the DAG's
+  # structure. Pinned to the same version and constraints file the image uses,
+  # so CI cannot silently drift from what actually runs.
+  dag-structure:
+    name: DAG structure tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Airflow against its constraints
+        env:
+          AIRFLOW_VERSION: '3.3.1'
+          PY: '3.12'
+        run: |
+          CONSTRAINTS="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PY}.txt"
+          pip install "apache-airflow==${AIRFLOW_VERSION}" \
+                      apache-airflow-providers-mysql \
+                      apache-airflow-providers-postgres \
+                      apache-airflow-providers-common-sql \
+                      pytest pyyaml --constraint "${CONSTRAINTS}"
+
+      - name: DAG structure tests
+        env:
+          AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+          AIRFLOW__CORE__UNIT_TEST_MODE: 'true'
+        run: pytest tests/dag -v

@@ -30,9 +30,7 @@ def validate_header(header: list[str]) -> None:
     """
     missing = [c for c in REQUIRED_SOURCE_COLUMNS if c not in header]
     if missing:
-        raise ValueError(
-            f"CSV is missing required columns: {missing}. Found: {header}"
-        )
+        raise ValueError(f"CSV is missing required columns: {missing}. Found: {header}")
     unmapped = [c for c in header if c not in SOURCE_TO_LANDING]
     if unmapped:
         raise ValueError(
@@ -66,9 +64,7 @@ def load_csv_to_landing(
         header = reader.fieldnames or []
         validate_header(header)
 
-        target_cols = ["batch_id", "raw_row_num"] + [
-            SOURCE_TO_LANDING[c] for c in header
-        ]
+        target_cols = ["batch_id", "raw_row_num"] + [SOURCE_TO_LANDING[c] for c in header]
         placeholders = ", ".join(["%s"] * len(target_cols))
         insert_sql = (
             f"INSERT INTO raw_flight_prices ({', '.join(target_cols)}) "

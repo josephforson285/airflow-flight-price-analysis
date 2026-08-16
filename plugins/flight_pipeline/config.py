@@ -83,9 +83,7 @@ def get_config(config_path: str | None = None) -> Config:
 
     # Environment wins over the file, for the values .env has always carried.
     source_csv = os.getenv("SOURCE_CSV_PATH") or paths["source_csv"]
-    threshold = float(
-        os.getenv("REJECT_RATE_THRESHOLD", val["reject_rate_threshold"])
-    )
+    threshold = float(os.getenv("REJECT_RATE_THRESHOLD", val["reject_rate_threshold"]))
     tolerance = float(os.getenv("FARE_TOLERANCE_BDT", val["fare_tolerance_bdt"]))
 
     if not 0 <= threshold <= 1:

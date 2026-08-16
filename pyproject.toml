@@ -1,3 +1,23 @@
+[tool.ruff]
+line-length = 90
+target-version = "py313"
+extend-exclude = ["logs", "config/airflow.cfg"]
+
+[tool.ruff.lint]
+# E/W pycodestyle · F pyflakes · I import order · UP pyupgrade
+# B bugbear (mutable defaults, loop-variable capture) · SIM simplification
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4"]
+
+[tool.ruff.lint.isort]
+# Without this, our own package gets sorted in among airflow/pytest as though
+# it were a third-party dependency.
+known-first-party = ["flight_pipeline"]
+
+[tool.ruff.lint.per-file-ignores]
+# Airflow DAG files legitimately build objects at import time and rely on the
+# decorator calling the function, so the "unused" call at the bottom is the point.
+"dags/*.py" = ["B018"]
+
 [tool.pytest.ini_options]
 # Airflow only puts plugins/ on sys.path once airflow itself is imported, so
 # without this a "pure Python" unit test would still need the orchestrator

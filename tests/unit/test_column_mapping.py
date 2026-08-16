@@ -12,6 +12,7 @@ same problem at build time, against the tracked fixture.
 from __future__ import annotations
 
 import csv
+
 import pytest
 
 from flight_pipeline.config import get_config
