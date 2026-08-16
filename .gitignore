@@ -35,6 +35,11 @@ standalone_admin_password.txt
 config/airflow.cfg
 
 # ---- python ----
+# The editable install writes egg-info into the source tree, and the mount
+# means it lands in ./src on the host too.
+*.egg-info/
+build/
+dist/
 __pycache__/
 *.py[cod]
 .venv/

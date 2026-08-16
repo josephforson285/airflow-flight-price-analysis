@@ -1,12 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flight-pipeline"
+version = "0.1.0"
+description = "Pipeline logic for the Bangladesh flight price analysis DAG"
+requires-python = ">=3.12"
+# Airflow and the providers are deliberately NOT listed. This package must be
+# installable and testable without them — that is the whole point of keeping
+# the logic Airflow-free. The DAG supplies database connections as callables.
+dependencies = ["PyYAML>=6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.ruff]
 line-length = 90
-target-version = "py313"
-extend-exclude = ["logs", "config/airflow.cfg"]
+target-version = "py312"
+extend-exclude = ["logs"]
 
 [tool.ruff.lint]
 # E/W pycodestyle · F pyflakes · I import order · UP pyupgrade
 # B bugbear (mutable defaults, loop-variable capture) · SIM simplification
-select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4"]
+# C4 comprehensions · PTH prefer pathlib · RUF ruff-specific
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4", "PTH", "RUF"]
 
 [tool.ruff.lint.isort]
 # Without this, our own package gets sorted in among airflow/pytest as though
@@ -19,11 +37,8 @@ known-first-party = ["flight_pipeline"]
 "dags/*.py" = ["B018"]
 
 [tool.pytest.ini_options]
-# Airflow only puts plugins/ on sys.path once airflow itself is imported, so
-# without this a "pure Python" unit test would still need the orchestrator
-# loaded just to import a dataclass. Declaring the path here lets unit tests
-# run against a bare checkout — no image, no scheduler, no database.
-pythonpath = ["plugins", "dags"]
+# No pythonpath entry and no conftest sys.path hack: the package is installed
+# (`pip install -e .`), so it imports like any other dependency.
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
 markers = [

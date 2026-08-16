@@ -25,7 +25,7 @@ REF_AIRPORTS = _CFG.paths.reference_airports
 
 @pytest.fixture(scope="module")
 def fixture_header() -> list[str]:
-    with open(FIXTURE, newline="", encoding="utf-8") as fh:
+    with FIXTURE.open(newline="", encoding="utf-8") as fh:
         return csv.DictReader(fh).fieldnames or []
 
 
@@ -67,7 +67,7 @@ def test_fixture_actually_contains_defects(fixture_header):
     would pass against it and the error handling would go untested again —
     the exact trap this fixture exists to avoid.
     """
-    with open(FIXTURE, newline="", encoding="utf-8") as fh:
+    with FIXTURE.open(newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
 
     blank_required = sum(
@@ -91,11 +91,11 @@ def test_reference_airports_cover_the_fixture_domain():
     The fixture deliberately contains one bogus code; anything beyond that
     means the reference table has drifted from the data.
     """
-    with open(REF_AIRPORTS, newline="", encoding="utf-8") as fh:
+    with REF_AIRPORTS.open(newline="", encoding="utf-8") as fh:
         known = {r["airport_code"].strip().upper() for r in csv.DictReader(fh)}
     assert len(known) == 20, f"expected 20 reference airports, found {len(known)}"
 
-    with open(FIXTURE, newline="", encoding="utf-8") as fh:
+    with FIXTURE.open(newline="", encoding="utf-8") as fh:
         used = set()
         for r in csv.DictReader(fh):
             used.add((r["Source"] or "").strip().upper())

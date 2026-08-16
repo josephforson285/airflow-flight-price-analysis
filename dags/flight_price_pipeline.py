@@ -2,7 +2,7 @@
 
 This file is wiring, not implementation. It declares what runs, in what
 order, against which connection; the work itself lives in
-`plugins/flight_pipeline/`, which imports no Airflow at all and is therefore
+`src/flight_pipeline/`, which imports no Airflow at all and is therefore
 testable without a scheduler.
 
 Orchestration principle: Airflow moves *control*; the databases move *data*.
@@ -28,7 +28,7 @@ from airflow.sdk import Param, dag, task
 from flight_pipeline import checks, ingest, transfer
 from flight_pipeline.config import get_config
 
-# Everything tunable comes from config/pipeline.yml. Nothing in this file is a
+# Everything tunable comes from include/config/pipeline.yml. Nothing in this file is a
 # magic number, and no path is hardcoded to /opt/airflow — the config module
 # resolves them from the project root, so the same code runs in the container,
 # in CI and in a bare checkout.

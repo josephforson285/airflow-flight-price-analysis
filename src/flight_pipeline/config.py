@@ -1,8 +1,8 @@
-"""Typed access to config/pipeline.yml.
+"""Typed access to include/config/pipeline.yml.
 
 Paths are resolved from this file's own location rather than a hardcoded
 `/opt/airflow`. The repository layout and the container layout are the same
-shape — `plugins/`, `include/` and `config/` all sit beside each other — so
+shape — `src/`, `include/` and `dags/` all sit beside each other — so
 `parents[2]` lands on the project root in both, and the same code works in a
 container, in CI, and in a bare checkout with no environment variables set.
 
@@ -19,10 +19,15 @@ from pathlib import Path
 
 import yaml
 
-# plugins/flight_pipeline/config.py -> plugins/flight_pipeline -> plugins -> ROOT
+# src/flight_pipeline/config.py -> src/flight_pipeline -> src -> PROJECT_ROOT
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INCLUDE_DIR = PROJECT_ROOT / "include"
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "pipeline.yml"
+
+# Deliberately NOT config/ — that directory belongs to Airflow (airflow.cfg
+# lives there), and putting our file in it squats on someone else's namespace.
+# Under include/ it is also mounted into the containers, so tuning a threshold
+# does not require rebuilding the image.
+DEFAULT_CONFIG_PATH = INCLUDE_DIR / "config" / "pipeline.yml"
 
 
 @dataclass(frozen=True)

@@ -35,7 +35,7 @@ def validate_header(header: list[str]) -> None:
     if unmapped:
         raise ValueError(
             f"CSV has columns this pipeline does not know how to map: {unmapped}. "
-            f"Update SOURCE_TO_LANDING in plugins/flight_pipeline/schema.py."
+            f"Update SOURCE_TO_LANDING in src/flight_pipeline/schema.py."
         )
 
 
@@ -59,7 +59,7 @@ def load_csv_to_landing(
     if not path.is_file():
         raise FileNotFoundError(f"source CSV not found: {path}")
 
-    with open(path, newline="", encoding="utf-8") as fh:
+    with path.open(newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         header = reader.fieldnames or []
         validate_header(header)
@@ -101,7 +101,7 @@ def load_csv_to_landing(
 def _read_reference(path: Path, build: Callable[[dict], tuple]) -> list[tuple]:
     if not path.is_file():
         raise FileNotFoundError(f"reference data missing: {path}")
-    with open(path, newline="", encoding="utf-8") as fh:
+    with path.open(newline="", encoding="utf-8") as fh:
         rows = [build(r) for r in csv.DictReader(fh)]
     if not rows:
         raise ValueError(f"reference file is empty: {path}")

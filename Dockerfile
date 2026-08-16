@@ -18,3 +18,19 @@ RUN PYV="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_
     echo "building against Airflow ${AIRFLOW_VERSION} / Python ${PYV}" && \
     pip install --no-cache-dir -r /tmp/requirements.txt \
       --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYV}.txt"
+
+# Install the pipeline package properly rather than relying on a directory
+# that happens to be on sys.path. Editable, and installed at the same path the
+# compose file mounts ./src to, so edits are live without a rebuild.
+#
+# --no-deps because Airflow's dependency tree is already resolved against its
+# constraints file above; letting pip resolve again here is how a working
+# image quietly becomes an unbootable one.
+# --chown matters: COPY lands files as root, and an editable install writes
+# flight_pipeline.egg-info back into the source tree. Without it the build
+# fails with "could not create 'src/flight_pipeline.egg-info': Permission
+# denied", which reads like a pip problem and is actually a file-ownership one.
+COPY --chown=airflow:0 pyproject.toml /opt/airflow/pyproject.toml
+COPY --chown=airflow:0 src /opt/airflow/src
+RUN pip install --no-cache-dir --no-deps -e /opt/airflow && \
+    python -c "import flight_pipeline; print('flight_pipeline importable:', flight_pipeline.__file__)"
