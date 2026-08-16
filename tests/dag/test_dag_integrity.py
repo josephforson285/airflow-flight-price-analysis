@@ -15,6 +15,8 @@ import pytest
 # stack sets to false.
 from airflow.dag_processing.dagbag import DagBag
 
+from flight_pipeline.config import PROJECT_ROOT
+
 DAG_ID = "flight_price_pipeline"
 
 EXPECTED_TASKS = {
@@ -44,7 +46,11 @@ KPI_TASKS = {
 
 @pytest.fixture(scope="module")
 def dagbag() -> DagBag:
-    return DagBag(dag_folder="/opt/airflow/dags")
+    # Derived from the project root, not hardcoded to /opt/airflow: that path
+    # exists only inside the container, so a CI runner (which checks out to
+    # /home/runner/work/...) would build an empty DagBag and every assertion
+    # below would fail for the wrong reason.
+    return DagBag(dag_folder=str(PROJECT_ROOT / "dags"))
 
 
 def test_no_import_errors(dagbag):
