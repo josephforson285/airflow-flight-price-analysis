@@ -36,26 +36,34 @@ make clean                      # stop and WIPE all data volumes
 
 ## Architecture
 
-```
- Flight_Price_Dataset_of_Bangladesh.csv   (57,000 rows, 17 cols, 14 MB)
-        │
-        │  ingest — everything lands as TEXT, no casting
-        ▼
- MySQL  raw_flight_prices          immutable landing zone
-        │
-        │  validate + cast
-        ├──────────────►  rejects_flight_prices     quarantined rows + reason
-        ▼
- MySQL  stg_flights                clean, typed, snake_cased
-        │
-        │  transfer (the one cross-engine hop)
-        ▼
- Postgres  fct_flights             analytics fact table
-        │
-        │  aggregate (parallel)
-        ▼
- Postgres  kpi_fare_by_airline · kpi_seasonal_variation
-           kpi_bookings_by_airline · kpi_popular_routes
+```mermaid
+flowchart TD
+    CSV["Flight_Price_Dataset_of_Bangladesh.csv<br>57,000 rows · 17 columns · 14 MB"]
+
+    subgraph staging["MySQL — staging (port 3307)"]
+        RAW[("raw_flight_prices<br><i>every column VARCHAR</i>")]
+        REJ[("rejects_flight_prices<br><i>one row per rule broken</i>")]
+        STG[("stg_flights<br><i>typed · DECIMAL money</i>")]
+        REF[("ref_airports<br>ref_allowed_values")]
+    end
+
+    subgraph analytics["PostgreSQL — analytics (port 5433)"]
+        FCT[("fct_flights")]
+        K1[("kpi_fare_by_airline")]
+        K2[("kpi_seasonal_variation")]
+        K3[("kpi_bookings_by_airline")]
+        K4[("kpi_popular_routes")]
+    end
+
+    CSV -->|"ingest · RFC 4180 · no casting"| RAW
+    REF -.->|"domain membership"| RAW
+    RAW -->|"11 validation rules"| REJ
+    RAW -->|"cast · derive · exclude rejects"| STG
+    STG -->|"COPY FROM STDIN"| FCT
+    FCT --> K1
+    FCT --> K2
+    FCT --> K3
+    FCT --> K4
 ```
 
 ### Why three databases
@@ -102,7 +110,7 @@ XCom carries row counts and batch ids, never DataFrames.
 from source.
 
 **No magic numbers, one config file.** Every tunable lives in
-`config/pipeline.yml` with the reasoning beside it — thresholds, batch size,
+`include/config/pipeline.yml` with the reasoning beside it — thresholds, batch size,
 the datetime guard regex, and the fare markup factor. Paths resolve from the
 project root rather than a hardcoded `/opt/airflow`, so the same code runs in
 the container, in CI, and in a bare checkout.
@@ -113,7 +121,7 @@ is an `UPDATE` rather than a code change and a redeploy. The stopover-count
 mapping rides along in the same table, because it is a property of the domain.
 
 **Declared once, tested for drift.** The fact-table column contract lives in
-`plugins/flight_pipeline/schema.py`; `tests/unit/test_schema_contract.py`
+`src/flight_pipeline/schema.py`; `tests/unit/test_schema_contract.py`
 parses both DDL files and fails if they disagree — including column *order*,
 since the transfer is a positional `COPY`.
 
@@ -268,11 +276,11 @@ the error handling would be untested again.
 ## Layout
 
 ```
-config/
-  pipeline.yml    ALL tunables — thresholds, paths, the fare markup factor
+pyproject.toml    package metadata, ruff + pytest config
+config/           Airflow's own airflow.cfg — we do not squat here
 dags/
   flight_price_pipeline.py   wiring only; no implementation, no magic numbers
-plugins/flight_pipeline/
+src/flight_pipeline/
   config.py       typed access to pipeline.yml, paths resolved from the root
   schema.py       the column contracts, declared once
   ingest.py       CSV load + reference seeding
@@ -287,8 +295,10 @@ include/
 tests/
   unit/          pure Python — no Airflow, no databases, runs in ~0.03s
   dag/           needs Airflow importable (DAG structure assertions)
+scripts/
+  integration_test.sh   end-to-end run + assertions; CI calls this same file
 docs/            project report
-.github/         CI: lint + unit on plain Python, DAG tests on pinned Airflow
+.github/         CI: lint+unit · DAG structure · end-to-end integration
 ```
 
 ---

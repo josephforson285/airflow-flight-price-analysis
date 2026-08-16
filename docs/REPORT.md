@@ -67,35 +67,42 @@ pipelines break, so it is worth practising deliberately.
 
 ### 1.3 Execution flow
 
+```mermaid
+flowchart TD
+    DDL1["create_staging_tables<br><i>MySQL DDL</i>"]
+    DDL2["create_analytics_tables<br><i>PostgreSQL DDL</i>"]
+    ING["ingest_csv_to_mysql"]
+    SEED["seed_reference_data"]
+    QUA["quarantine_invalid_rows"]
+    GATE{{"assert_reject_rate<br>GATE"}}
+    BLD["build_stg_flights"]
+    VAL["validate_stg_flights"]
+    TRN["transfer_to_postgres"]
+    K1["kpi_fare_by_airline"]
+    K2["kpi_seasonal_variation"]
+    K3["kpi_bookings_by_airline"]
+    K4["kpi_popular_routes"]
+    FIN{{"assert_kpis_populated"}}
+
+    DDL1 --> ING
+    DDL1 --> SEED
+    ING --> QUA
+    SEED --> QUA
+    QUA --> GATE --> BLD --> VAL --> TRN
+    DDL2 --> TRN
+    TRN --> K1
+    TRN --> K2
+    TRN --> K3
+    TRN --> K4
+    K1 --> FIN
+    K2 --> FIN
+    K3 --> FIN
+    K4 --> FIN
 ```
-   create_staging_tables                create_analytics_tables
-     (MySQL DDL)                          (PostgreSQL DDL)
-        │                                        │
-        ├──────────────┐                         │
-        ▼              ▼                         │
-  ingest_csv_to   seed_reference_data            │
-     _mysql                                      │
-        └──────────────┬─────────────┘           │
-                       ▼                         │
-             quarantine_invalid_rows             │
-                       ▼                         │
-              assert_reject_rate     ◄── GATE    │
-                       ▼                         │
-               build_stg_flights                 │
-                       ▼                         │
-              validate_stg_flights               │
-                       └───────────┬─────────────┘
-                                   ▼
-                         transfer_to_postgres
-                                   │
-        ┌───────────┬──────────────┼──────────────┬───────────┐
-        ▼           ▼              ▼              ▼           │
-   kpi_fare_   kpi_seasonal_  kpi_bookings_  kpi_popular_     │
-   by_airline    variation     by_airline      routes         │
-        └───────────┴──────────────┴──────────────┴───────────┘
-                                   ▼
-                         assert_kpis_populated
-```
+
+The two DDL branches build in parallel; the four KPI marts fan out; the gate
+sits directly between validation and the staging build; and the graph
+terminates on an assertion rather than a write.
 
 Three properties of this graph are deliberate:
 
@@ -141,7 +148,7 @@ the logic stays readable to anyone who knows SQL.
 ### 1.5 Code organisation
 
 The DAG file is wiring: it declares what runs, in what order, against which
-connection. The work lives in `plugins/flight_pipeline/`, which imports no
+connection. The work lives in `src/flight_pipeline/`, which imports no
 Airflow — database access arrives as a `connect` callable supplied by the DAG.
 That inversion is what makes the logic testable without a scheduler, a
 metadata database or a 3 GB image, and it is why the unit suite runs in
@@ -149,12 +156,12 @@ hundredths of a second.
 
 | Concern | Lives in |
 |---|---|
-| Tunables — thresholds, batch size, markup factor, guard regex | `config/pipeline.yml` |
-| Typed config access, path resolution | `plugins/flight_pipeline/config.py` |
-| Column contracts | `plugins/flight_pipeline/schema.py` |
-| CSV load, reference seeding | `plugins/flight_pipeline/ingest.py` |
-| Cross-engine transfer | `plugins/flight_pipeline/transfer.py` |
-| Gate decisions | `plugins/flight_pipeline/checks.py` |
+| Tunables — thresholds, batch size, markup factor, guard regex | `include/config/pipeline.yml` |
+| Typed config access, path resolution | `src/flight_pipeline/config.py` |
+| Column contracts | `src/flight_pipeline/schema.py` |
+| CSV load, reference seeding | `src/flight_pipeline/ingest.py` |
+| Cross-engine transfer | `src/flight_pipeline/transfer.py` |
+| Gate decisions | `src/flight_pipeline/checks.py` |
 | Orchestration only | `dags/flight_price_pipeline.py` |
 
 Three principles drove the split, each fixing a defect the first version had:
