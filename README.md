@@ -101,6 +101,22 @@ XCom carries row counts and batch ids, never DataFrames.
 `docker compose up` needs zero clicking in the UI. The stack is reproducible
 from source.
 
+**No magic numbers, one config file.** Every tunable lives in
+`config/pipeline.yml` with the reasoning beside it — thresholds, batch size,
+the datetime guard regex, and the fare markup factor. Paths resolve from the
+project root rather than a hardcoded `/opt/airflow`, so the same code runs in
+the container, in CI, and in a bare checkout.
+
+**Validity is data, not code.** Airport codes and the allowed categorical
+values both live in reference tables seeded each run, so correcting a domain
+is an `UPDATE` rather than a code change and a redeploy. The stopover-count
+mapping rides along in the same table, because it is a property of the domain.
+
+**Declared once, tested for drift.** The fact-table column contract lives in
+`plugins/flight_pipeline/schema.py`; `tests/unit/test_schema_contract.py`
+parses both DDL files and fails if they disagree — including column *order*,
+since the transfer is a positional `COPY`.
+
 ---
 
 ## What the data actually contains
@@ -228,8 +244,13 @@ bulk path regardless.
 ## Tests
 
 ```bash
-make test      # 16 tests
+make test      # 36 tests
 ```
+
+The suite is split by what it needs. `tests/unit/` (27 tests) imports no
+Airflow at all — it runs on a bare Python install in about 0.03 seconds, which
+is what lets CI check lint and logic without building a 3 GB image.
+`tests/dag/` (9 tests) needs Airflow importable to build a DagBag.
 
 `test_dag_integrity.py` asserts structure, not behaviour: the KPI tasks have no
 dependency on each other, the reject gate really does sit *between* quarantine
@@ -247,17 +268,27 @@ the error handling would be untested again.
 ## Layout
 
 ```
-dags/            DAG definitions
+config/
+  pipeline.yml    ALL tunables — thresholds, paths, the fare markup factor
+dags/
+  flight_price_pipeline.py   wiring only; no implementation, no magic numbers
+plugins/flight_pipeline/
+  config.py       typed access to pipeline.yml, paths resolved from the root
+  schema.py       the column contracts, declared once
+  ingest.py       CSV load + reference seeding
+  transfer.py     MySQL -> PostgreSQL COPY
+  checks.py       the gates (pure decision logic + thin DB wrappers)
 include/
   data/raw/       bulk source extracts — gitignored
   data/reference/ curated lookup data — tracked, read by every run
   data/fixtures/  deliberately broken input — tracked, test material only
   sql/mysql/     staging DDL + transformations
   sql/postgres/  analytics DDL + KPI queries
-tests/           DAG-integrity and unit tests
-config/          airflow.cfg (generated)
-plugins/         custom operators, if any
-docs/            report material
+tests/
+  unit/          pure Python — no Airflow, no databases, runs in ~0.03s
+  dag/           needs Airflow importable (DAG structure assertions)
+docs/            project report
+.github/         CI: lint + unit on plain Python, DAG tests on pinned Airflow
 ```
 
 ---

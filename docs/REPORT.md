@@ -138,6 +138,43 @@ so clearing and re-running any task leaves identical row counts. A bare
 work the database is built for; the data never enters the worker's memory, and
 the logic stays readable to anyone who knows SQL.
 
+### 1.5 Code organisation
+
+The DAG file is wiring: it declares what runs, in what order, against which
+connection. The work lives in `plugins/flight_pipeline/`, which imports no
+Airflow — database access arrives as a `connect` callable supplied by the DAG.
+That inversion is what makes the logic testable without a scheduler, a
+metadata database or a 3 GB image, and it is why the unit suite runs in
+hundredths of a second.
+
+| Concern | Lives in |
+|---|---|
+| Tunables — thresholds, batch size, markup factor, guard regex | `config/pipeline.yml` |
+| Typed config access, path resolution | `plugins/flight_pipeline/config.py` |
+| Column contracts | `plugins/flight_pipeline/schema.py` |
+| CSV load, reference seeding | `plugins/flight_pipeline/ingest.py` |
+| Cross-engine transfer | `plugins/flight_pipeline/transfer.py` |
+| Gate decisions | `plugins/flight_pipeline/checks.py` |
+| Orchestration only | `dags/flight_price_pipeline.py` |
+
+Three principles drove the split, each fixing a defect the first version had:
+
+**No magic numbers.** The fare markup factor — the most consequential business
+rule here — was a bare `1.2` in two SQL files, while the trivial rounding
+tolerance was already a proper parameter. Both now sit in `pipeline.yml` with
+their reasoning written beside them.
+
+**Declared once.** The fact-table column contract previously existed in three
+places: two DDL files and a Python list. It is now declared once, and
+`test_schema_contract.py` parses the DDL and fails if it drifts — including
+column *order*, since the transfer is a positional `COPY`. That guard was
+verified to actually fail before being trusted.
+
+**Validity is data.** Airport codes were already a reference table on the
+argument that a correction should be an `UPDATE` rather than a redeploy. Three
+other domains contradicted that by sitting in SQL as string literals. They are
+all reference data now.
+
 ---
 
 ## 2. DAG and task descriptions
@@ -604,8 +641,12 @@ genuine parallel execution rather than incidental ordering.
 ### 6.4 Automated tests
 
 ```
-16 passed
+36 passed        27 unit (no Airflow) + 9 DAG structure
 ```
+
+The unit suite runs in a plain `python:3.13-slim` container with Airflow not
+installed at all, completing in 0.03 seconds. That is what allows CI to check
+lint and logic on every push without building the image.
 
 `test_dag_integrity.py` asserts structure rather than behaviour: no KPI task
 depends on another, the reject gate genuinely sits between quarantine and the
