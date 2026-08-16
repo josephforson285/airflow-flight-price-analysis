@@ -12,19 +12,14 @@ same problem at build time, against the tracked fixture.
 from __future__ import annotations
 
 import csv
-import sys
-
 import pytest
 
-sys.path.insert(0, "/opt/airflow/dags")
+from flight_pipeline.config import get_config
+from flight_pipeline.schema import REQUIRED_SOURCE_COLUMNS, SOURCE_TO_LANDING
 
-from flight_price_pipeline import (  # noqa: E402
-    COLUMN_MAP,
-    REQUIRED_SOURCE_COLUMNS,
-)
-
-FIXTURE = "/opt/airflow/include/data/fixtures/corrupted_sample.csv"
-REF_AIRPORTS = "/opt/airflow/include/data/reference/ref_airports.csv"
+_CFG = get_config()
+FIXTURE = _CFG.paths.corrupted_fixture
+REF_AIRPORTS = _CFG.paths.reference_airports
 
 
 @pytest.fixture(scope="module")
@@ -34,31 +29,31 @@ def fixture_header() -> list[str]:
 
 
 def test_every_source_column_is_mapped(fixture_header):
-    unmapped = [c for c in fixture_header if c not in COLUMN_MAP]
+    unmapped = [c for c in fixture_header if c not in SOURCE_TO_LANDING]
     assert not unmapped, f"columns with no landing target: {unmapped}"
 
 
 def test_map_has_no_stale_entries(fixture_header):
     """A mapping for a column that no longer exists is dead weight."""
-    stale = [c for c in COLUMN_MAP if c not in fixture_header]
-    assert not stale, f"COLUMN_MAP references columns not in the source: {stale}"
+    stale = [c for c in SOURCE_TO_LANDING if c not in fixture_header]
+    assert not stale, f"SOURCE_TO_LANDING references columns not in the source: {stale}"
 
 
 def test_required_columns_are_mapped():
-    missing = [c for c in REQUIRED_SOURCE_COLUMNS if c not in COLUMN_MAP]
-    assert not missing, f"required columns absent from COLUMN_MAP: {missing}"
+    missing = [c for c in REQUIRED_SOURCE_COLUMNS if c not in SOURCE_TO_LANDING]
+    assert not missing, f"required columns absent from SOURCE_TO_LANDING: {missing}"
 
 
 def test_landing_names_are_unique():
     """Two source columns mapping to one landing column would silently
     overwrite each other."""
-    targets = list(COLUMN_MAP.values())
+    targets = list(SOURCE_TO_LANDING.values())
     assert len(targets) == len(set(targets)), "duplicate landing column names"
 
 
 def test_landing_names_are_sql_safe():
     """The whole point of the mapping is escaping hostile identifiers."""
-    for source, target in COLUMN_MAP.items():
+    for source, target in SOURCE_TO_LANDING.items():
         assert target.replace("_", "").isalnum(), f"{source} -> {target} not SQL-safe"
         assert target.islower(), f"{target} should be lower case"
         assert target != "class", "'class' is ambiguous across engines"

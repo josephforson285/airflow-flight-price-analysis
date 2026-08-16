@@ -25,6 +25,11 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.sdk import Param, dag, task
 
 from flight_pipeline.config import get_config
+from flight_pipeline.schema import (
+    REQUIRED_SOURCE_COLUMNS,
+    SOURCE_TO_LANDING,
+    fact_column_list,
+)
 
 log = logging.getLogger(__name__)
 
@@ -37,42 +42,6 @@ CONFIG = get_config()
 MYSQL_CONN_ID = CONFIG.connections.mysql
 POSTGRES_CONN_ID = CONFIG.connections.postgres
 INSERT_BATCH_SIZE = CONFIG.ingest_batch_size
-
-# Source header -> landing column. The source names carry spaces, ampersands
-# and parentheses ("Tax & Surcharge (BDT)") which are hostile as SQL
-# identifiers, so they are normalised exactly once, here, at the boundary.
-# `Class` becomes travel_class to sidestep the reserved-word question.
-COLUMN_MAP = {
-    "Airline": "airline",
-    "Source": "source_code",
-    "Source Name": "source_name",
-    "Destination": "destination_code",
-    "Destination Name": "destination_name",
-    "Departure Date & Time": "departure_datetime",
-    "Arrival Date & Time": "arrival_datetime",
-    "Duration (hrs)": "duration_hrs",
-    "Stopovers": "stopovers",
-    "Aircraft Type": "aircraft_type",
-    "Class": "travel_class",
-    "Booking Source": "booking_source",
-    "Base Fare (BDT)": "base_fare_bdt",
-    "Tax & Surcharge (BDT)": "tax_surcharge_bdt",
-    "Total Fare (BDT)": "total_fare_bdt",
-    "Seasonality": "seasonality",
-    "Days Before Departure": "days_before_departure",
-}
-
-# The brief names these as the must-exist set (it writes them without the
-# "(BDT)" suffix the file actually uses — noted in the report).
-REQUIRED_SOURCE_COLUMNS = [
-    "Airline",
-    "Source",
-    "Destination",
-    "Base Fare (BDT)",
-    "Tax & Surcharge (BDT)",
-    "Total Fare (BDT)",
-]
-
 
 
 @dag(
@@ -174,15 +143,16 @@ def flight_price_pipeline():
                 raise ValueError(
                     f"CSV is missing required columns: {missing}. Found: {header}"
                 )
-            unmapped = [c for c in header if c not in COLUMN_MAP]
+            unmapped = [c for c in header if c not in SOURCE_TO_LANDING]
             if unmapped:
                 raise ValueError(
                     f"CSV has columns this pipeline does not know how to map: "
-                    f"{unmapped}. Update COLUMN_MAP before ingesting."
+                    f"{unmapped}. Update SOURCE_TO_LANDING in "
+                    f"plugins/flight_pipeline/schema.py before ingesting."
                 )
 
             target_cols = ["batch_id", "raw_row_num"] + [
-                COLUMN_MAP[c] for c in header
+                SOURCE_TO_LANDING[c] for c in header
             ]
             placeholders = ", ".join(["%s"] * len(target_cols))
             insert_sql = (
@@ -351,17 +321,7 @@ def flight_price_pipeline():
         fit — but a pipeline that only works because the data is small is a
         pipeline with an undocumented expiry date.
         """
-        columns = [
-            "batch_id", "raw_row_num", "airline",
-            "source_code", "source_name", "destination_code", "destination_name",
-            "departure_at", "arrival_at", "duration_hrs",
-            "stopovers", "stopover_count", "aircraft_type", "travel_class",
-            "booking_source", "base_fare_bdt", "tax_surcharge_bdt",
-            "total_fare_reported_bdt", "total_fare_computed_bdt",
-            "fare_variance_bdt", "has_fare_markup", "markup_pct",
-            "seasonality", "is_peak_season", "days_before_departure",
-        ]
-        col_list = ", ".join(columns)
+        col_list = fact_column_list()
 
         my_conn = MySqlHook(mysql_conn_id=MYSQL_CONN_ID).get_conn()
         my_cur = my_conn.cursor()
