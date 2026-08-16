@@ -84,10 +84,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `make init` rather than a bare cp: it generates the Fernet key and JWT
+      # secret, which compose references without defaults. Using the same
+      # entry point a new contributor uses means CI exercises the documented
+      # setup path instead of a special one that only works here.
       - name: Create .env
+        run: make init
+
+      - name: Verify no placeholder secrets survived
         run: |
-          cp .env.example .env
-          sed -i "s/^AIRFLOW_UID=.*/AIRFLOW_UID=$(id -u)/" .env
+          if grep -q "REPLACE_ME" .env; then
+            echo "make init left placeholder secrets in .env"; exit 1
+          fi
 
       - name: Build image
         run: docker compose build

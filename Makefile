@@ -8,8 +8,16 @@ help:  ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
-init:  ## Create .env from the template (does not overwrite)
-	@test -f .env && echo ".env exists, leaving it" || (cp .env.example .env && chmod 600 .env && echo "created .env — edit the passwords")
+init:  ## Create .env with freshly generated secrets (does not overwrite)
+	@if [ -f .env ]; then echo ".env exists, leaving it"; else \
+	  sed -e "s|^AIRFLOW_UID=.*|AIRFLOW_UID=$$(id -u)|" \
+	      -e "s|^FERNET_KEY=.*|FERNET_KEY=$$(openssl rand -base64 32 | tr '+/' '-_')|" \
+	      -e "s|^AIRFLOW__API_AUTH__JWT_SECRET=.*|AIRFLOW__API_AUTH__JWT_SECRET=$$(openssl rand -hex 32)|" \
+	      -e "s|^MYSQL_PASSWORD=.*|MYSQL_PASSWORD=$$(openssl rand -hex 16)|" \
+	      -e "s|^MYSQL_ROOT_PASSWORD=.*|MYSQL_ROOT_PASSWORD=$$(openssl rand -hex 16)|" \
+	      -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$$(openssl rand -hex 16)|" \
+	      .env.example > .env && chmod 600 .env && \
+	  echo "created .env with generated secrets"; fi
 
 build:  ## Build the extended Airflow image
 	$(COMPOSE) build

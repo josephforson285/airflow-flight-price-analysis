@@ -15,7 +15,7 @@ Built with **Airflow 3.3.1** on **LocalExecutor**, entirely in Docker.
 ## Quickstart
 
 ```bash
-cp .env.example .env      # or: make init
+make init                 # .env with freshly generated secrets + your uid
 make build                # build the extended Airflow image (once, ~3 min)
 make up                   # start the stack
 make ps                   # wait until services report healthy
