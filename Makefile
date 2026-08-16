@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 COMPOSE := docker compose
 
-.PHONY: help init build up down restart ps logs mysql psql test dag-test clean nuke
+.PHONY: help init build up down restart ps logs mysql psql test integration lint dag-test clean nuke
 
 help:  ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -37,6 +37,13 @@ psql:  ## Open a psql shell on the analytics database
 
 test:  ## Run the test suite inside the Airflow image
 	$(COMPOSE) run --rm --no-deps airflow-cli bash -c 'cd /opt/airflow && python -m pytest tests -q'
+
+integration:  ## End-to-end: run the real DAG against the corrupted fixture and assert
+	./scripts/integration_test.sh
+
+lint:  ## Lint and format-check (same rules CI enforces)
+	docker run --rm -v "$$PWD":/w -w /w python:3.13-slim sh -c \
+	  'pip install -q ruff && ruff check . && ruff format --check .'
 
 dag-test:  ## Parse-check every DAG (catches import errors before the scheduler does)
 	$(COMPOSE) run --rm --no-deps airflow-cli bash -c 'airflow dags list-import-errors'

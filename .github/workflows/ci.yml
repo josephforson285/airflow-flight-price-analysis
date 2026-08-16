@@ -26,7 +26,8 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install ruff pytest pyyaml
+        # -e . installs the package properly; no sys.path manipulation needed.
+        run: pip install -e . ruff pytest
 
       - name: Lint
         run: ruff check .
@@ -61,10 +62,43 @@ jobs:
                       apache-airflow-providers-mysql \
                       apache-airflow-providers-postgres \
                       apache-airflow-providers-common-sql \
-                      pytest pyyaml --constraint "${CONSTRAINTS}"
+                      pytest --constraint "${CONSTRAINTS}"
+          pip install -e . --no-deps
 
       - name: DAG structure tests
         env:
           AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
           AIRFLOW__CORE__UNIT_TEST_MODE: 'true'
         run: pytest tests/dag -v
+
+  # The only job that runs the real pipeline against real databases. The unit
+  # suite proves the logic and the DAG tests prove the shape; neither would
+  # catch a broken SQL statement, a bad connection URI or a schema mismatch.
+  #
+  # The assertions live in scripts/integration_test.sh rather than inline here,
+  # so anyone debugging a red build can run exactly the same thing locally.
+  integration:
+    name: End-to-end pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create .env
+        run: |
+          cp .env.example .env
+          sed -i "s/^AIRFLOW_UID=.*/AIRFLOW_UID=$(id -u)/" .env
+
+      - name: Build image
+        run: docker compose build
+
+      - name: Run end-to-end pipeline against the corrupted fixture
+        run: ./scripts/integration_test.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail 200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
