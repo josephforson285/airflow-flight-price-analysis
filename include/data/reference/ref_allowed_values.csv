@@ -1,0 +1,11 @@
+field_name,allowed_value,numeric_equivalent
+travel_class,Business,
+travel_class,Economy,
+travel_class,First Class,
+stopovers,1 Stop,1
+stopovers,2 Stops,2
+stopovers,Direct,0
+seasonality,Eid,
+seasonality,Hajj,
+seasonality,Regular,
+seasonality,Winter Holidays,

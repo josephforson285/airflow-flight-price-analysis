@@ -193,45 +193,68 @@ def flight_price_pipeline():
 
     @task
     def seed_reference_data() -> dict:
-        """Load the known-airport domain used by the UNKNOWN_AIRPORT rule.
+        """Seed the reference domains the validation rules check against.
+
+        Two files: the known airports (UNKNOWN_AIRPORT rule) and the allowed
+        categorical values (UNKNOWN_CATEGORY rule, plus the stopover-count
+        mapping used by the staging build).
 
         Independent of the CSV ingest, so it runs alongside it rather than
         after it.
         """
-        ref_path = CONFIG.paths.reference_airports
-        if not ref_path.is_file():
-            raise FileNotFoundError(f"reference data missing: {ref_path}")
+        def read(path, build) -> list[tuple]:
+            if not path.is_file():
+                raise FileNotFoundError(f"reference data missing: {path}")
+            with open(path, newline="", encoding="utf-8") as fh:
+                rows = [build(r) for r in csv.DictReader(fh)]
+            if not rows:
+                raise ValueError(f"reference file is empty: {path}")
+            return rows
 
-        with open(ref_path, newline="", encoding="utf-8") as fh:
-            rows = [
-                (
-                    r["airport_code"].strip().upper(),
-                    r["airport_name"].strip(),
-                    int(r["is_origin"]),
-                    int(r["is_destination"]),
-                )
-                for r in csv.DictReader(fh)
-            ]
-        if not rows:
-            raise ValueError("reference airport file is empty")
+        airports = read(
+            CONFIG.paths.reference_airports,
+            lambda r: (
+                r["airport_code"].strip().upper(),
+                r["airport_name"].strip(),
+                int(r["is_origin"]),
+                int(r["is_destination"]),
+            ),
+        )
+        allowed = read(
+            CONFIG.paths.reference_allowed_values,
+            lambda r: (
+                r["field_name"].strip(),
+                r["allowed_value"].strip(),
+                # blank means the domain has no derived numeric value
+                int(r["numeric_equivalent"]) if r["numeric_equivalent"].strip() else None,
+            ),
+        )
 
         hook = MySqlHook(mysql_conn_id=MYSQL_CONN_ID)
         conn = hook.get_conn()
         conn.autocommit(False)
         cursor = conn.cursor()
+
         cursor.execute("DELETE FROM ref_airports")
         cursor.executemany(
             "INSERT INTO ref_airports "
             "(airport_code, airport_name, is_origin, is_destination) "
             "VALUES (%s, %s, %s, %s)",
-            rows,
+            airports,
         )
+        cursor.execute("DELETE FROM ref_allowed_values")
+        cursor.executemany(
+            "INSERT INTO ref_allowed_values "
+            "(field_name, allowed_value, numeric_equivalent) VALUES (%s, %s, %s)",
+            allowed,
+        )
+
         conn.commit()
         cursor.close()
         conn.close()
 
-        log.info("seeded %s reference airports", len(rows))
-        return {"airports": len(rows)}
+        log.info("seeded %s airports, %s allowed values", len(airports), len(allowed))
+        return {"airports": len(airports), "allowed_values": len(allowed)}
 
     # -----------------------------------------------------------------
     # Validation

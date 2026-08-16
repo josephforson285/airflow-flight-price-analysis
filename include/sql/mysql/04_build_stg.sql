@@ -31,11 +31,14 @@ SELECT
     STR_TO_DATE(IF(r.arrival_datetime   REGEXP '{{ dt_regex }}', r.arrival_datetime,   NULL), '{{ dt_format }}'),
     CAST(r.duration_hrs AS DECIMAL(8,4)),
     TRIM(r.stopovers),
-    CASE TRIM(r.stopovers)
-        WHEN 'Direct'  THEN 0
-        WHEN '1 Stop'  THEN 1
-        WHEN '2 Stops' THEN 2
-    END,
+    -- Was a CASE mapping 'Direct' -> 0 here. The mapping is a property of the
+    -- stopovers domain, so it lives beside the domain in ref_allowed_values
+    -- rather than being restated in transformation logic.
+    --
+    -- LEFT JOIN, not INNER, on purpose: stopover_count is NOT NULL, so if the
+    -- reference table were ever unseeded this INSERT fails loudly on a null
+    -- constraint instead of silently dropping every row.
+    sv.numeric_equivalent,
     TRIM(r.aircraft_type),
     TRIM(r.travel_class),
     TRIM(r.booking_source),
@@ -75,6 +78,8 @@ SELECT
     CAST(r.days_before_departure AS SIGNED)
 
 FROM raw_flight_prices r
+LEFT JOIN ref_allowed_values sv
+       ON sv.field_name = 'stopovers' AND sv.allowed_value = TRIM(r.stopovers)
 LEFT JOIN (
     SELECT DISTINCT batch_id, raw_row_num
     FROM rejects_flight_prices

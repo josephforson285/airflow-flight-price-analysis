@@ -123,20 +123,31 @@ WHERE batch_id = '{{ run_id }}'
   AND UPPER(TRIM(source_code)) = UPPER(TRIM(destination_code));
 
 -- ---------------------------------------------------------------------
--- 7. Category not in the known domain (profiled: exactly 3 classes)
+-- 7. Category not in the known domain.
+--
+-- Membership in ref_allowed_values, not literals in this file. The domains
+-- were previously hardcoded here as NOT IN (...) lists, written out twice
+-- each, which contradicted the argument made for airports one rule below:
+-- validity is data, so correcting it should be an UPDATE rather than a code
+-- change and a redeploy.
 -- ---------------------------------------------------------------------
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
-SELECT batch_id, raw_row_num, 'UNKNOWN_CATEGORY',
+SELECT r.batch_id, r.raw_row_num, 'UNKNOWN_CATEGORY',
        CONCAT_WS(',',
-         CASE WHEN TRIM(COALESCE(travel_class,''))   NOT IN ('Economy','Business','First Class')      THEN CONCAT('class=',      travel_class)   END,
-         CASE WHEN TRIM(COALESCE(stopovers,''))      NOT IN ('Direct','1 Stop','2 Stops')             THEN CONCAT('stopovers=',  stopovers)      END,
-         CASE WHEN TRIM(COALESCE(seasonality,''))    NOT IN ('Regular','Winter Holidays','Hajj','Eid') THEN CONCAT('seasonality=', seasonality)   END),
-       JSON_OBJECT('class', travel_class, 'stopovers', stopovers, 'seasonality', seasonality)
-FROM raw_flight_prices
-WHERE batch_id = '{{ run_id }}'
-  AND (   TRIM(COALESCE(travel_class,'')) NOT IN ('Economy','Business','First Class')
-       OR TRIM(COALESCE(stopovers,''))    NOT IN ('Direct','1 Stop','2 Stops')
-       OR TRIM(COALESCE(seasonality,''))  NOT IN ('Regular','Winter Holidays','Hajj','Eid'));
+         CASE WHEN c.allowed_value IS NULL THEN CONCAT('class=',       r.travel_class) END,
+         CASE WHEN s.allowed_value IS NULL THEN CONCAT('stopovers=',   r.stopovers)    END,
+         CASE WHEN z.allowed_value IS NULL THEN CONCAT('seasonality=', r.seasonality)  END),
+       JSON_OBJECT('class', r.travel_class, 'stopovers', r.stopovers,
+                   'seasonality', r.seasonality)
+FROM raw_flight_prices r
+LEFT JOIN ref_allowed_values c
+       ON c.field_name = 'travel_class' AND c.allowed_value = TRIM(r.travel_class)
+LEFT JOIN ref_allowed_values s
+       ON s.field_name = 'stopovers'    AND s.allowed_value = TRIM(r.stopovers)
+LEFT JOIN ref_allowed_values z
+       ON z.field_name = 'seasonality'  AND z.allowed_value = TRIM(r.seasonality)
+WHERE r.batch_id = '{{ run_id }}'
+  AND (c.allowed_value IS NULL OR s.allowed_value IS NULL OR z.allowed_value IS NULL);
 
 -- ---------------------------------------------------------------------
 -- 8. Negative lead time
