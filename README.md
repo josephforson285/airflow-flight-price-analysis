@@ -179,7 +179,7 @@ Zero nulls, zero negatives, zero duplicates means every validation check passes
 on the real file and the quarantine path never executes — untested code that
 merely *looks* like protection.
 
-`include/data/fixtures/corrupted_sample.csv` therefore ships 31 rows: 14 pristine,
+`include/data/fixtures/corrupted_sample.csv` therefore ships 32 rows: 15 pristine,
 12 carrying one deliberate defect each (null FK, negative fare, non-numeric in a
 numeric column, arithmetic violation, arrival-before-departure, self-route,
 missing measure, negative lead time, unparseable date, unknown category, invalid

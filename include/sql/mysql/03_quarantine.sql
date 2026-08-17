@@ -239,13 +239,38 @@ INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_de
 WITH ranked AS (
     SELECT batch_id, raw_row_num,
            ROW_NUMBER() OVER (
-               PARTITION BY MD5(CONCAT_WS('',
-                   COALESCE(airline,'~'), COALESCE(source_code,'~'), COALESCE(destination_code,'~'),
-                   COALESCE(departure_datetime,'~'), COALESCE(arrival_datetime,'~'),
-                   COALESCE(travel_class,'~'), COALESCE(booking_source,'~'),
-                   COALESCE(base_fare_bdt,'~'), COALESCE(tax_surcharge_bdt,'~'),
-                   COALESCE(total_fare_bdt,'~'), COALESCE(seasonality,'~'),
-                   COALESCE(days_before_departure,'~')))
+               -- ALL 17 source columns. The fingerprint previously covered
+               -- 12, omitting source_name, destination_name, duration_hrs,
+               -- stopovers and aircraft_type -- so two rows differing only in,
+               -- say, aircraft type hashed identically and the second was
+               -- quarantined as an "identical row" it was not. The rule was
+               -- called DUPLICATE_ROW and reported "occurrence #N of an
+               -- identical row" while actually testing a partial business key.
+               --
+               -- Separator is CHAR(31) (ASCII unit separator), not ''. With an
+               -- empty separator the fingerprint is ambiguous: airline 'US'
+               -- plus source 'BD' concatenates to the same string as 'USB'
+               -- plus 'D', so different rows could collide. CHAR(30) stands in
+               -- for NULL for the same reason -- a literal '~' in the data
+               -- could otherwise impersonate a null.
+               PARTITION BY MD5(CONCAT_WS(CHAR(31),
+                   COALESCE(airline,                 CHAR(30)),
+                   COALESCE(source_code,             CHAR(30)),
+                   COALESCE(source_name,             CHAR(30)),
+                   COALESCE(destination_code,        CHAR(30)),
+                   COALESCE(destination_name,        CHAR(30)),
+                   COALESCE(departure_datetime,      CHAR(30)),
+                   COALESCE(arrival_datetime,        CHAR(30)),
+                   COALESCE(duration_hrs,            CHAR(30)),
+                   COALESCE(stopovers,               CHAR(30)),
+                   COALESCE(aircraft_type,           CHAR(30)),
+                   COALESCE(travel_class,            CHAR(30)),
+                   COALESCE(booking_source,          CHAR(30)),
+                   COALESCE(base_fare_bdt,           CHAR(30)),
+                   COALESCE(tax_surcharge_bdt,       CHAR(30)),
+                   COALESCE(total_fare_bdt,          CHAR(30)),
+                   COALESCE(seasonality,             CHAR(30)),
+                   COALESCE(days_before_departure,   CHAR(30))))
                ORDER BY raw_row_num
            ) AS occurrence
     FROM raw_flight_prices

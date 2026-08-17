@@ -237,7 +237,7 @@ something, and it is the DAG's only leaf.
 | `NEGATIVE_LEAD_TIME` | Negative `days_before_departure` |
 | `FARE_ARITHMETIC` | `base + tax ≠ total`, *excluding* the known ×1.2 pattern |
 | `UNKNOWN_AIRPORT` | Airport code absent from `ref_airports` — the brief's "invalid city names" |
-| `DUPLICATE_ROW` | Exact duplicate; first occurrence kept |
+| `DUPLICATE_ROW` | Exact duplicate across **all 17** source columns; first occurrence kept |
 | `NON_NUMERIC_MEASURE` | `duration_hrs` or `days_before_departure` not a number |
 | `IMPLAUSIBLE_DURATION` | Duration ≤ 0 or beyond the configured bound (48 h) |
 
@@ -428,8 +428,11 @@ pass against the real file, meaning the entire quarantine path would never
 execute. That is untested code that merely *looks* like protection.
 
 **Resolution.** A deliberately corrupted fixture,
-`include/data/fixtures/corrupted_sample.csv`: 31 rows comprising 14 pristine
-records, 16 each carrying one planted defect, and one exact duplicate. The
+`include/data/fixtures/corrupted_sample.csv`: 32 rows comprising 15 pristine
+records, 16 each carrying one planted defect, and one exact duplicate. One of
+the pristine rows is a deliberate near-duplicate — identical to another row
+except for `aircraft_type` — which guards against the duplicate fingerprint
+regressing to a partial one. The
 same DAG runs against it by overriding `source_csv_path` at trigger time — no
 code change. Two runs are performed: one at the strict 5% threshold to prove
 the gate blocks, and one at a relaxed threshold to prove the downstream path
@@ -684,6 +687,36 @@ renamed `total_fare_bdt`, because revenue requires seats sold and a sum of
 advertised fares over unique flight records is not that. The measure is still
 published; it is simply no longer called something it isn't.
 
+### 4.14 A rule that did not do what its name said
+
+**Problem.** The `DUPLICATE_ROW` rule was labelled "exact duplicate rows" and
+reported `occurrence #N of an identical row`, but its fingerprint covered only
+**12 of the 17** source columns — omitting `source_name`, `destination_name`,
+`duration_hrs`, `stopovers` and `aircraft_type`. Two rows differing only in,
+say, aircraft type therefore hashed identically, and the second was quarantined
+as an "identical row" it was not. It was testing a partial business key while
+claiming to test row equality.
+
+A second defect sat alongside it: the fingerprint used `CONCAT_WS('')` — an
+**empty** separator — which makes the hash ambiguous. Airline `US` with source
+`BD` concatenates to the same string as airline `USB` with source `D`, so
+genuinely different rows could collide and one would be wrongly rejected.
+
+**Resolution.** The fingerprint now covers all 17 source columns, separated by
+`CHAR(31)` (the ASCII unit separator) with `CHAR(30)` standing in for NULL, so
+neither the field boundaries nor the null marker can be forged by ordinary
+data. The rule now means what its name says.
+
+A regression guard was added to the fixture: a row identical to another except
+for `aircraft_type`. Under the old fingerprint it would be wrongly flagged as a
+duplicate; the integration test now asserts it is **promoted** to staging
+(15 clean rows rather than 14), so the fingerprint cannot silently narrow again.
+
+Worth recording honestly: this gap was noticed earlier, while adding fixture
+rows, and worked around by giving those rows distinct timestamps instead of
+being fixed. Working around a known defect is how it survives to be found by
+someone else.
+
 ---
 
 ## 5. Deviations from the brief
@@ -723,8 +756,8 @@ markup rows flagged     2,522     = 4.42%, matching independent profiling
 ### 6.2 Fixture run — strict threshold (gate must block)
 
 ```
-ingested                   31
-distinct rows rejected     17     = 54.8% > 5% threshold
+ingested                   32
+distinct rows rejected     17     = 53.1% > 5% threshold
 outcome                    assert_reject_rate FAILED, pipeline halted
                            before publishing anything
 ```
@@ -738,9 +771,9 @@ each of `ARRIVAL_BEFORE_DEPARTURE`, `DUPLICATE_ROW`, `IMPLAUSIBLE_DURATION`,
 ### 6.3 Fixture run — relaxed threshold (downstream must exclude rejects)
 
 ```
-ingested                   31
+ingested                   32
 rejected                   17
-fct_flights                14     ← exactly the clean rows
+fct_flights                15     ← exactly the clean rows
 all four KPI tables        populated, pipeline green
 ```
 
