@@ -614,12 +614,37 @@ failed on a column that "should" have existed. `IF NOT EXISTS` is a no-op
 against an existing table: the file said one thing and the database kept
 another, silently.
 
-**Resolution.** The four KPI marts are derived, rebuilt in full every run and
-have no dependents, so they are now `DROP` then `CREATE`. The DDL file becomes
-the schema, always. `fct_flights` deliberately keeps `IF NOT EXISTS` because it
-is the load target rather than a derivative — changing *its* shape needs a real
-migration tool, which this project does not have and which is recorded as a
-known limitation rather than pretended away.
+**First attempt, and why it was wrong.** The marts were changed to `DROP` then
+`CREATE`. That fixed the drift but broke something else: the `DROP` ran in
+`create_analytics_tables` at the *start* of the DAG, so a failing KPI task left
+its mart **empty** until a successful re-run. Previously `DELETE` + `INSERT`
+inside one transaction had rolled back and kept the previous data. One safety
+was traded for another.
+
+**Resolution.** Each mart now builds into `kpi_x__new` and replaces the live
+table inside a **single transaction**. PostgreSQL has transactional DDL, so all
+three properties hold at once: the schema comes from the file every run so it
+cannot drift; readers see the previous mart until commit, so there is no empty
+window; and a failure anywhere rolls the whole rebuild back.
+
+Verified by running the swap statements and forcing a division by zero
+mid-transaction:
+
+```
+rows_before   10        rows_after    10     ← previous mart survived
+leftover      0                              ← no __new debris
+schema        all 9 original columns intact
+```
+
+Both the `DROP` and the `RENAME` rolled back.
+
+`fct_flights` keeps `IF NOT EXISTS` — it is a load target, not a derivative —
+so it gets an explicit guard instead. `transfer_to_postgres` compares the live
+columns against the declared contract *before* deleting anything and fails with
+the exact difference, rather than surfacing later as a `COPY` error on an
+unknown column. Five unit tests cover it, including the column-**order** case:
+the transfer is a positional `COPY`, so the right names in the wrong order
+would load every value into the wrong column without erroring at all.
 
 ### 4.12 Database code had no failure path
 
