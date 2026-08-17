@@ -436,8 +436,8 @@ pass against the real file, meaning the entire quarantine path would never
 execute. That is untested code that merely *looks* like protection.
 
 **Resolution.** A deliberately corrupted fixture,
-`include/data/fixtures/corrupted_sample.csv`: 32 rows comprising 15 pristine
-records, 16 each carrying one planted defect, and one exact duplicate. One of
+`include/data/fixtures/corrupted_sample.csv`: 32 rows comprising 16 rows that
+pass every rule, 15 each carrying one planted defect, and one exact duplicate. One of
 the pristine rows is a deliberate near-duplicate — identical to another row
 except for `aircraft_type` — which guards against the duplicate fingerprint
 regressing to a partial one. The
@@ -488,7 +488,7 @@ than code. A `ref_airports` table was added, seeded each run from
 `include/data/reference/ref_airports.csv` (20 airports, 8 of which serve as
 origins), together with an `UNKNOWN_AIRPORT` rule that anti-joins against it.
 Correcting the domain is now an `UPDATE`, not a code change and a redeploy.
-With this in place all 13 defective rows are caught.
+With this in place every planted defect is caught.
 
 ### 4.4 A 20% fare markup on 4.42% of rows — data error or business rule?
 
@@ -511,8 +511,15 @@ cannot settle which.
 `fare_variance_bdt`, a `has_fare_discrepancy` flag and `fare_variance_pct`. KPIs use the
 reported total, because that is what the passenger paid, and the flag count is
 published in KPI 1 so the caveat travels with the number instead of being
-buried in a `COALESCE`. The `FARE_ARITHMETIC` reject rule explicitly excludes
-the ×1.2 pattern, so only arithmetic broken in some *other* way is quarantined.
+buried in a `COALESCE`.
+
+Nothing is rejected for disagreeing. Detection is one expression —
+`ABS(reported − computed) > tolerance` — and the size of the disagreement lands
+in `fare_variance_pct`, so the 20% is **observed rather than assumed**: across
+all 2,522 rows that column reads 20.000 with zero standard deviation. An
+earlier version tested for the ×1.2 factor directly, which was a constant
+fitted to this extract: a file with a different markup would have been
+quarantined and, because 4.42% sits under the 5% gate, silently dropped.
 
 In a production setting this is the point at which one asks the data owner.
 Absent an owner, preserving the evidence and making the ambiguity visible is
@@ -718,7 +725,7 @@ data. The rule now means what its name says.
 A regression guard was added to the fixture: a row identical to another except
 for `aircraft_type`. Under the old fingerprint it would be wrongly flagged as a
 duplicate; the integration test now asserts it is **promoted** to staging
-(15 clean rows rather than 14), so the fingerprint cannot silently narrow again.
+(16 clean rows rather than 15), so the fingerprint cannot silently narrow again.
 
 Worth recording honestly: this gap was noticed earlier, while adding fixture
 rows, and worked around by giving those rows distinct timestamps instead of
@@ -765,14 +772,14 @@ markup rows flagged     2,522     = 4.42%, matching independent profiling
 
 ```
 ingested                   32
-distinct rows rejected     17     = 53.1% > 5% threshold
+distinct rows rejected     16     = 50.0% > 5% threshold
 outcome                    assert_reject_rate FAILED, pipeline halted
                            before publishing anything
 ```
 
 Reject breakdown across all 12 rules: `MISSING_REQUIRED` 4,
-`FARE_ARITHMETIC` 2, `NON_NUMERIC_FARE` 2, `NON_NUMERIC_MEASURE` 2, and one
-each of `ARRIVAL_BEFORE_DEPARTURE`, `DUPLICATE_ROW`, `IMPLAUSIBLE_DURATION`,
+`NON_NUMERIC_FARE` 2, `NON_NUMERIC_MEASURE` 2, and one each of
+`ARRIVAL_BEFORE_DEPARTURE`, `DUPLICATE_ROW`, `IMPLAUSIBLE_DURATION`,
 `NEGATIVE_FARE`, `NEGATIVE_LEAD_TIME`, `SELF_ROUTE`, `UNKNOWN_AIRPORT`,
 `UNKNOWN_CATEGORY`, `UNPARSEABLE_DATE`.
 
@@ -780,8 +787,8 @@ each of `ARRIVAL_BEFORE_DEPARTURE`, `DUPLICATE_ROW`, `IMPLAUSIBLE_DURATION`,
 
 ```
 ingested                   32
-rejected                   17
-fct_flights                15     ← exactly the clean rows
+rejected                   16
+fct_flights                16     ← exactly the clean rows
 all four KPI tables        populated, pipeline green
 ```
 

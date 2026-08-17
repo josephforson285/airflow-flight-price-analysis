@@ -173,7 +173,7 @@ SELECT reason_code, COUNT(DISTINCT raw_row_num) AS rows_hit
 FROM rejects_flight_prices GROUP BY reason_code ORDER BY 1;
 ```
 
-13 reason codes, 17 of 32 rows caught. Then the punchline:
+12 reason codes, 16 of 32 rows caught. Then the punchline:
 
 ```sql
 SELECT COUNT(*) FROM stg_flights;    -- still the PREVIOUS good data
