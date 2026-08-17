@@ -98,11 +98,20 @@ flowchart TD
     K2 --> FIN
     K3 --> FIN
     K4 --> FIN
+
+    ING -. "rows_ingested" .-> GATE
+    TRN -. "rows_transferred" .-> FIN
 ```
 
 The two DDL branches build in parallel; the four KPI marts fan out; the gate
 sits directly between validation and the staging build; and the graph
 terminates on an assertion rather than a write.
+
+The two dotted edges are **XCom data dependencies**, created by passing a
+task's return value as an argument. They carry a single integer each — the
+ingested row count into the reject gate, the transferred count into the final
+assertion — which is exactly what XCom is for. Airflow treats them as real
+dependencies, so they appear in the UI graph too.
 
 Three properties of this graph are deliberate:
 
