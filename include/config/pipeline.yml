@@ -32,7 +32,8 @@ validation:
   max_duration_hrs: 48
 
 business_rules:
-  # 4.42% of rows carry total = (base + tax) * 1.2 exactly. Flagged, not
-  # rejected -- deterministic, so probably a rule rather than corruption.
-  fare_markup_factor: 1.2
+  # A total below its components, or many times them, is not a surcharge.
+  # Relative on purpose: fares span 1,800-559,000 BDT, so no absolute bound
+  # can be both above float noise and below "absurd" across that range.
+  max_fare_ratio: 1.5
   regular_season_label: Regular

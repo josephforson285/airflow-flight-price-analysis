@@ -56,7 +56,7 @@ def postgres_connect():
         "dt_format": CONFIG.validation.datetime_format,
         "num_regex": CONFIG.validation.numeric_regex,
         "max_duration_hrs": CONFIG.validation.max_duration_hrs,
-        "markup_factor": CONFIG.business_rules.fare_markup_factor,
+        "max_fare_ratio": CONFIG.business_rules.max_fare_ratio,
         "regular_season": CONFIG.business_rules.regular_season_label,
     },
     params={

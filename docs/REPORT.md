@@ -165,7 +165,7 @@ hundredths of a second.
 
 | Concern | Lives in |
 |---|---|
-| Tunables — thresholds, batch size, markup factor, guard regex | `include/config/pipeline.yml` |
+| Tunables — thresholds, batch size, plausibility bounds, guard regex | `include/config/pipeline.yml` |
 | Typed config access, path resolution | `src/flight_pipeline/config.py` |
 | Column contracts | `src/flight_pipeline/schema.py` |
 | CSV load, reference seeding | `src/flight_pipeline/ingest.py` |
@@ -176,7 +176,7 @@ hundredths of a second.
 
 Three principles drove the split, each fixing a defect the first version had:
 
-**No magic numbers.** The fare markup factor — the most consequential business
+**No magic numbers.** The fare plausibility bound — the most consequential
 rule here — was a bare `1.2` in two SQL files, while the trivial rounding
 tolerance was already a proper parameter. Both now sit in `pipeline.yml` with
 their reasoning written beside them.
@@ -275,7 +275,7 @@ counter.
 
 ```
 avg_total_fare_bdt = AVG(total_fare_reported_bdt)  GROUP BY airline
-markup_row_count   = COUNT(*) FILTER (WHERE has_fare_markup)
+discrepancy_row_count   = COUNT(*) FILTER (WHERE has_fare_discrepancy)
 ```
 
 `min`, `max`, mean base fare and mean tax are carried alongside. Source:
@@ -295,7 +295,7 @@ markup_row_count   = COUNT(*) FILTER (WHERE has_fare_markup)
 **Analytical caveat — this KPI is a weak discriminator in this dataset.** The
 full range of airline mean fares is roughly 68,100 to 75,500 BDT, a spread of
 about 11%. Given fares within the data span 1,800 to 558,987 BDT, airline
-identity explains very little of the variation. `markup_row_count` is likewise
+identity explains very little of the variation. `discrepancy_row_count` is likewise
 near-uniform (91–114 per airline). Both point to fares having been generated
 largely independently of airline. The KPI is computed as specified, but it
 should not be read as evidence that one carrier is systematically pricier.
@@ -509,7 +509,7 @@ cannot settle which.
 
 **Resolution.** The pipeline refuses to silently pick. Both values are kept —
 `total_fare_reported_bdt` and `total_fare_computed_bdt` — alongside
-`fare_variance_bdt`, a `has_fare_markup` flag and `markup_pct`. KPIs use the
+`fare_variance_bdt`, a `has_fare_discrepancy` flag and `fare_variance_pct`. KPIs use the
 reported total, because that is what the passenger paid, and the flag count is
 published in KPI 1 so the caveat travels with the number instead of being
 buried in a `COALESCE`. The `FARE_ARITHMETIC` reject rule explicitly excludes

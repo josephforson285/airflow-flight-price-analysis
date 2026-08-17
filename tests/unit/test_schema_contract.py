@@ -156,4 +156,4 @@ def test_column_order_difference_is_caught():
 
 def test_error_explains_why_the_ddl_edit_did_not_apply():
     with pytest.raises(ValueError, match="CREATE TABLE IF NOT EXISTS cannot alter"):
-        assert_live_fact_schema(_live(drop="markup_pct"))
+        assert_live_fact_schema(_live(drop="fare_variance_pct"))

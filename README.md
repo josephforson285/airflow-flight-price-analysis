@@ -169,7 +169,7 @@ Deterministic, and spread evenly across class, stopovers and booking source.
 Whether this is dirty data or an unstated surge-pricing rule cannot be settled
 from the data alone. So the pipeline does not silently pick: it keeps
 `total_fare_reported`, derives `total_fare_computed`, and flags the row with
-`has_fare_markup` / `markup_pct`. KPIs use the reported total — that is what the
+`has_fare_discrepancy` / `fare_variance_pct`. KPIs use the reported total — that is what the
 passenger paid — and the flag rate is published as a quality metric.
 
 This is also why `REJECT_RATE_THRESHOLD` is 5% and not the 2% that intuition

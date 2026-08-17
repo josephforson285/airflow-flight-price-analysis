@@ -1,7 +1,7 @@
 -- KPI 1 -- Average fare by airline.
 --
 -- Uses total_fare_REPORTED: that is what the passenger paid, so it is the
--- honest basis for a price KPI. markup_row_count keeps the caveat beside the
+-- honest basis for a price KPI. discrepancy_row_count keeps the caveat beside the
 -- number instead of burying it.
 --
 -- Atomic swap: build into __new, then replace in one transaction. Postgres
@@ -18,14 +18,14 @@ CREATE TABLE kpi_fare_by_airline__new (
     max_total_fare_bdt NUMERIC(12,2) NOT NULL,
     avg_base_fare_bdt  NUMERIC(12,2) NOT NULL,
     avg_tax_bdt        NUMERIC(12,2) NOT NULL,
-    markup_row_count   BIGINT        NOT NULL,
+    discrepancy_row_count   BIGINT        NOT NULL,
     built_at           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (airline)
 );
 
 INSERT INTO kpi_fare_by_airline__new (
     airline, bookings, avg_total_fare_bdt, min_total_fare_bdt, max_total_fare_bdt,
-    avg_base_fare_bdt, avg_tax_bdt, markup_row_count
+    avg_base_fare_bdt, avg_tax_bdt, discrepancy_row_count
 )
 SELECT
     airline,
@@ -35,7 +35,7 @@ SELECT
     MAX(total_fare_reported_bdt)                    AS max_total_fare_bdt,
     ROUND(AVG(base_fare_bdt), 2)                    AS avg_base_fare_bdt,
     ROUND(AVG(tax_surcharge_bdt), 2)                AS avg_tax_bdt,
-    COUNT(*) FILTER (WHERE has_fare_markup)         AS markup_row_count
+    COUNT(*) FILTER (WHERE has_fare_discrepancy)         AS discrepancy_row_count
 FROM fct_flights
 GROUP BY airline;
 

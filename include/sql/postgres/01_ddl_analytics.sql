@@ -28,8 +28,8 @@ CREATE TABLE IF NOT EXISTS fct_flights (
     total_fare_reported_bdt NUMERIC(12,2) NOT NULL,
     total_fare_computed_bdt NUMERIC(12,2) NOT NULL,
     fare_variance_bdt       NUMERIC(12,2) NOT NULL,
-    has_fare_markup         BOOLEAN       NOT NULL,
-    markup_pct              NUMERIC(7,3)  NOT NULL,
+    has_fare_discrepancy    BOOLEAN       NOT NULL,
+    fare_variance_pct       NUMERIC(7,3)  NOT NULL,
 
     seasonality             TEXT          NOT NULL,
     is_peak_season          BOOLEAN       NOT NULL,

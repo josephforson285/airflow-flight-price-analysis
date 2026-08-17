@@ -19,9 +19,9 @@ CREATE TABLE IF NOT EXISTS rejects_flight_prices (
 -- Staging. Money is DECIMAL(12,2), never FLOAT -- binary floating point
 -- cannot represent decimal currency exactly, so sums drift.
 --
--- The fare columns keep both values for the x1.2 markup rows: whether that
--- is dirty data or an unstated rule cannot be settled from the data, so the
--- pipeline flags rather than picks.
+-- Both fare values are kept whenever they disagree: whether a discrepancy is
+-- dirty data or an unstated rule cannot be settled from the data, so the
+-- pipeline flags and records the size rather than picking one.
 CREATE TABLE IF NOT EXISTS stg_flights (
     batch_id                VARCHAR(64)  NOT NULL,
     raw_row_num             INT UNSIGNED NOT NULL,
@@ -46,8 +46,8 @@ CREATE TABLE IF NOT EXISTS stg_flights (
     total_fare_reported_bdt DECIMAL(12,2) NOT NULL,  -- as supplied; what the passenger paid
     total_fare_computed_bdt DECIMAL(12,2) NOT NULL,  -- base + tax
     fare_variance_bdt       DECIMAL(12,2) NOT NULL,  -- reported - computed
-    has_fare_markup         TINYINT(1)    NOT NULL,  -- the exact x1.2 pattern
-    markup_pct              DECIMAL(7,3)  NOT NULL,
+    has_fare_discrepancy    TINYINT(1)   NOT NULL,  -- reported <> computed
+    fare_variance_pct       DECIMAL(7,3) NOT NULL,
 
     seasonality             VARCHAR(32)  NOT NULL,
     is_peak_season          TINYINT(1)   NOT NULL,   -- Eid / Hajj / Winter Holidays

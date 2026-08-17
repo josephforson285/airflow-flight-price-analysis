@@ -148,10 +148,15 @@ WHERE batch_id = '{{ run_id }}'
   AND days_before_departure REGEXP '{{ num_regex }}'
   AND CAST(days_before_departure AS DECIMAL(20,10)) < 0;
 
--- 9. Fare arithmetic violation.
--- Excludes the known x1.2 markup (4.42% of rows, deterministic) -- that is
--- flagged in staging, not rejected. Only arithmetic broken some other way
--- lands here.
+-- 9. Implausible fare arithmetic.
+-- A disagreement alone is not an error -- those are flagged in staging. This
+-- rejects only totals that cannot be a surcharge: below their own components,
+-- or beyond max_fare_ratio times them.
+--
+-- Relative, not absolute, because no absolute bound separates them: legitimate
+-- discrepancies span 445-93,165 BDT and a genuinely broken row sits at 16,105,
+-- inside that range. Expressed as multiplication so there is no division by
+-- zero to guard.
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
 SELECT batch_id, raw_row_num, 'FARE_ARITHMETIC',
        CONCAT('base+tax=', CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10)),
@@ -162,14 +167,16 @@ WHERE batch_id = '{{ run_id }}'
   AND base_fare_bdt     REGEXP '{{ num_regex }}'
   AND tax_surcharge_bdt REGEXP '{{ num_regex }}'
   AND total_fare_bdt    REGEXP '{{ num_regex }}'
-  -- differs from base + tax ...
+  -- differs by real money ...
   AND ABS(CAST(total_fare_bdt AS DECIMAL(20,10))
           - (CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10))))
       > {{ params.fare_tolerance }}
-  -- ... and is NOT the known x1.2 markup
-  AND ABS(CAST(total_fare_bdt AS DECIMAL(20,10))
-          - {{ markup_factor }} * (CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10))))
-      > {{ params.fare_tolerance }};
+  -- ... and is implausible
+  AND (   (CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10))) <= 0
+       OR CAST(total_fare_bdt AS DECIMAL(20,10))
+            < (CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10)))
+       OR CAST(total_fare_bdt AS DECIMAL(20,10))
+            > {{ max_fare_ratio }} * (CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10))));
 
 -- 10. Airport code outside the known domain -- the brief's "invalid city
 -- names". Blank codes are skipped; MISSING_REQUIRED already reports them.

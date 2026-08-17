@@ -19,11 +19,47 @@ Open <http://localhost:8080> — login `airflow` / `airflow`.
 > If ports clash: your machine runs a **local** MySQL on 3306 and PostgreSQL on
 > 5432. The containers use **3307 / 5433 / 8080** on purpose. Nothing collides.
 
-Cold start from nothing (only if asked to prove reproducibility):
+### How fresh do you want to be?
+
+Pick the lightest one that does the job — heavier is slower, not better.
+
+| Level | Command | Time | Use when |
+|---|---|---|---|
+| **1. New run** | just trigger again | ~15s | Between takes. Full refresh replaces everything anyway. |
+| **2. Clear run history** | see below | ~5s | The UI is cluttered with past runs, or a failed run is holding the slot |
+| **3. Wipe the databases** | `make clean && make up` | ~1 min | You want the tables provably empty before you start |
+| **4. Everything, incl. image** | `make nuke && make build && make up` | ~4 min | Proving a cold clone works |
+
+**Level 2 — clear run history** (the one you'll actually use):
 
 ```bash
-make init && make build && make up      # ~4 min total
+docker compose exec -T airflow-scheduler airflow dags delete flight_price_pipeline -y
+docker compose exec -T airflow-scheduler airflow dags reserialize
+docker compose exec -T airflow-scheduler airflow dags unpause flight_price_pipeline
 ```
+
+This wipes Airflow's *run history* only — the databases keep their data. It's
+also the fix when a run won't start because a previously failed one still holds
+the single run slot.
+
+**Level 3 — prove the tables are empty**, which demos well:
+
+```bash
+make clean && make up
+make q SQL="SELECT COUNT(*) FROM fct_flights"   # table doesn't exist yet — that IS the point
+```
+
+Then trigger and watch it build from nothing in ~14 seconds.
+
+### Give each demo run a name you can point at
+
+```bash
+docker compose exec -T airflow-scheduler \
+  airflow dags trigger flight_price_pipeline --run-id demo_monday_1
+```
+
+That name becomes the `batch_id` stamped on every row it produces (see §2.5),
+so you can say "these 57,000 rows came from *that* run" and then show it.
 
 ---
 
@@ -62,6 +98,56 @@ Check it from the shell:
 docker compose exec -T airflow-scheduler \
   airflow tasks states-for-dag-run flight_price_pipeline <run-id> -o plain
 ```
+
+---
+
+## 2.5 Lineage — "where did this row come from?" (1 min)
+
+Every row in every table carries a `batch_id`. It is **the Airflow `run_id`,
+copied verbatim** — so the name you pass to `--run-id` is the name stamped on
+the data.
+
+```bash
+make psql
+```
+```sql
+SELECT batch_id, COUNT(*), MIN(loaded_at) FROM fct_flights GROUP BY batch_id;
+```
+
+```
+ batch_id    | count |         min
+-------------+-------+----------------------------
+ docker_trim | 57000 | 2026-08-17 19:15:15
+```
+
+Same id appears in `raw_flight_prices`, `stg_flights` and `fct_flights` — one
+run's fingerprint, traceable end to end across both databases.
+
+**The question someone will ask: why only one batch?**
+
+Because every layer is a **full refresh** — each run deletes and reloads rather
+than appending. So `batch_id` is a *lineage stamp*, not a history partition:
+it answers "which run produced this row", not "show me last Tuesday's load".
+
+That's a deliberate choice, and worth saying out loud:
+
+> *"The source is one static extract, so accumulating batches would just
+> duplicate the same 57,000 rows. Full refresh is also what makes every task
+> safe to re-run — clear one and re-run it and the counts come out identical
+> rather than doubling."*
+
+If this became a daily feed, `batch_id` is already the column you'd partition
+on — the design doesn't have to change, only the delete scope.
+
+Trace a single row back to its line in the CSV:
+
+```sql
+SELECT batch_id, raw_row_num, airline, source_code, destination_code
+FROM fct_flights ORDER BY raw_row_num LIMIT 3;
+```
+
+`raw_row_num` is the 1-based line number in the source file, so any row —
+including any quarantined one — points back at the exact CSV line it came from.
 
 ---
 
@@ -138,8 +224,8 @@ well-ordered — demand concentrated into immovable travel windows.
 ```sql
 SELECT COUNT(*) AS markup_rows,
        ROUND(100.0*COUNT(*)/(SELECT COUNT(*) FROM fct_flights),2) AS pct,
-       MIN(markup_pct), MAX(markup_pct)
-FROM fct_flights WHERE has_fare_markup;
+       MIN(fare_variance_pct), MAX(fare_variance_pct)
+FROM fct_flights WHERE has_fare_discrepancy;
 ```
 2,522 rows (4.42%) where `total = (base + tax) × 1.2` **exactly** — min = max.
 

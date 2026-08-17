@@ -11,7 +11,7 @@ INSERT INTO stg_flights (
     aircraft_type, travel_class, booking_source,
     base_fare_bdt, tax_surcharge_bdt,
     total_fare_reported_bdt, total_fare_computed_bdt, fare_variance_bdt,
-    has_fare_markup, markup_pct,
+    has_fare_discrepancy, fare_variance_pct,
     seasonality, is_peak_season, days_before_departure
 )
 SELECT
@@ -49,11 +49,12 @@ SELECT
       - (ROUND(CAST(r.base_fare_bdt AS DECIMAL(20,10)), 2)
          + ROUND(CAST(r.tax_surcharge_bdt AS DECIMAL(20,10)), 2)),
 
-    -- The x1.2 markup: flagged, never silently altered.
+    -- Flag any real disagreement. No fitted constant: the SIZE of it is
+    -- recorded in fare_variance_pct, so a pattern is observed, not assumed.
     CASE WHEN ABS(CAST(r.total_fare_bdt AS DECIMAL(20,10))
-                  - {{ markup_factor }} * (CAST(r.base_fare_bdt AS DECIMAL(20,10))
-                           + CAST(r.tax_surcharge_bdt AS DECIMAL(20,10))))
-              <= {{ params.fare_tolerance }}
+                  - (CAST(r.base_fare_bdt AS DECIMAL(20,10))
+                     + CAST(r.tax_surcharge_bdt AS DECIMAL(20,10))))
+              > {{ params.fare_tolerance }}
          THEN 1 ELSE 0 END,
     CASE WHEN CAST(r.base_fare_bdt AS DECIMAL(20,10))
               + CAST(r.tax_surcharge_bdt AS DECIMAL(20,10)) > 0
