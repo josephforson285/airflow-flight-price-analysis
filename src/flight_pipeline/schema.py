@@ -97,3 +97,39 @@ DB_MANAGED_COLUMNS: tuple[str, ...] = ("loaded_at",)
 def fact_column_list() -> str:
     """Comma-separated column list for SELECT / COPY statements."""
     return ", ".join(FACT_COLUMNS)
+
+
+def assert_live_fact_schema(actual_columns: list[str]) -> None:
+    """Raise if the live fct_flights does not match this contract.
+
+    fct_flights is created with CREATE TABLE IF NOT EXISTS, which is a no-op
+    against an existing table: editing the DDL changes the file and not the
+    database. The KPI marts avoid this by rebuilding themselves through an
+    atomic swap, but the fact table is a load target, not a derivative — so it
+    gets an explicit check instead.
+
+    Without it, a schema change surfaces as a COPY failing on an unknown
+    column, which reads like a bug in the transfer. With it, the error names
+    exactly what drifted and what to do about it.
+    """
+    expected = list(FACT_COLUMNS) + list(DB_MANAGED_COLUMNS)
+    if list(actual_columns) == expected:
+        return
+
+    missing = [c for c in expected if c not in actual_columns]
+    extra = [c for c in actual_columns if c not in expected]
+    detail = []
+    if missing:
+        detail.append(f"missing from the database: {missing}")
+    if extra:
+        detail.append(f"present in the database but not declared: {extra}")
+    if not detail:
+        detail.append(f"column ORDER differs: {actual_columns} != {expected}")
+
+    raise ValueError(
+        "fct_flights has drifted from the declared schema — "
+        + "; ".join(detail)
+        + ". CREATE TABLE IF NOT EXISTS cannot alter an existing table, so the "
+        "DDL edit did not reach the database. Migrate it, or drop the table "
+        "and re-run (all data is regenerated from staging)."
+    )

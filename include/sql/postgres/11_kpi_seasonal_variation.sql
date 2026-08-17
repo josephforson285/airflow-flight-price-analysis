@@ -8,10 +8,23 @@
 --
 -- vs_regular_pct expresses each season's mean fare as a premium over the
 -- Regular baseline, which is the number a pricing analyst actually wants.
+--
+-- Built via atomic swap — see 10_kpi_fare_by_airline.sql for why.
 
-DELETE FROM kpi_seasonal_variation;
+DROP TABLE IF EXISTS kpi_seasonal_variation__new;
 
-INSERT INTO kpi_seasonal_variation (
+CREATE TABLE kpi_seasonal_variation__new (
+    seasonality        TEXT          NOT NULL,
+    is_peak_season     BOOLEAN       NOT NULL,
+    bookings           BIGINT        NOT NULL,
+    avg_total_fare_bdt NUMERIC(12,2) NOT NULL,
+    -- premium of this season's mean fare over the 'Regular' baseline
+    vs_regular_pct     NUMERIC(8,3)  NOT NULL,
+    built_at           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (seasonality)
+);
+
+INSERT INTO kpi_seasonal_variation__new (
     seasonality, is_peak_season, bookings, avg_total_fare_bdt, vs_regular_pct
 )
 WITH baseline AS (
@@ -33,3 +46,6 @@ SELECT
 FROM fct_flights f
 CROSS JOIN baseline b
 GROUP BY f.seasonality, b.regular_avg;
+
+DROP TABLE IF EXISTS kpi_seasonal_variation;
+ALTER TABLE kpi_seasonal_variation__new RENAME TO kpi_seasonal_variation;

@@ -9,10 +9,25 @@
 -- Ties break on route code so the ranking is deterministic across runs —
 -- otherwise re-running the DAG shuffles equal-count routes and the table
 -- appears to change when nothing did.
+--
+-- Built via atomic swap — see 10_kpi_fare_by_airline.sql for why.
 
-DELETE FROM kpi_popular_routes;
+DROP TABLE IF EXISTS kpi_popular_routes__new;
 
-INSERT INTO kpi_popular_routes (
+CREATE TABLE kpi_popular_routes__new (
+    rank_position      INTEGER       NOT NULL,
+    source_code        TEXT          NOT NULL,
+    source_name        TEXT          NOT NULL,
+    destination_code   TEXT          NOT NULL,
+    destination_name   TEXT          NOT NULL,
+    bookings           BIGINT        NOT NULL,
+    avg_total_fare_bdt NUMERIC(12,2) NOT NULL,
+    airlines_serving   INTEGER       NOT NULL,
+    built_at           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (source_code, destination_code)
+);
+
+INSERT INTO kpi_popular_routes__new (
     rank_position, source_code, source_name, destination_code, destination_name,
     bookings, avg_total_fare_bdt, airlines_serving
 )
@@ -33,3 +48,6 @@ SELECT
     source_code, source_name, destination_code, destination_name,
     bookings, avg_total_fare_bdt, airlines_serving
 FROM routes;
+
+DROP TABLE IF EXISTS kpi_popular_routes;
+ALTER TABLE kpi_popular_routes__new RENAME TO kpi_popular_routes;

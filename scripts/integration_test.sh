@@ -103,6 +103,11 @@ log "Asserting analytics load and reconciliation"
 assert_eq "$(pg_scalar 'SELECT COUNT(*) FROM fct_flights')" 14 "fact rows"
 assert_eq "$(pg_scalar 'SELECT SUM(bookings) FROM kpi_bookings_by_airline')" 14 "KPI bookings reconcile"
 assert_eq "$(pg_scalar 'SELECT COUNT(*) FROM fct_flights WHERE total_fare_computed_bdt <> base_fare_bdt + tax_surcharge_bdt')" 0 "fare arithmetic internally consistent"
+# Each mart is built as kpi_x__new and renamed into place. A leftover __new
+# table means a swap did not complete, which would otherwise go unnoticed
+# because the live mart still holds the previous run's data.
+leftover_swaps="$(pg_scalar "SELECT COUNT(*) FROM information_schema.tables WHERE table_name LIKE '%__new'")"
+assert_eq "$leftover_swaps" 0 "no half-finished mart swaps left behind"
 
 # ---------------------------------------------------------------------
 log "Run 2: same fixture at the DEFAULT threshold — the gate must BLOCK it"

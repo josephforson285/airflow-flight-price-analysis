@@ -24,6 +24,7 @@ from flight_pipeline.schema import (
     FACT_COLUMNS,
     REQUIRED_SOURCE_COLUMNS,
     SOURCE_TO_LANDING,
+    assert_live_fact_schema,
     fact_column_list,
 )
 
@@ -114,3 +115,45 @@ def test_no_duplicate_declarations():
     assert len(FACT_COLUMNS) == len(set(FACT_COLUMNS))
     assert len(set(SOURCE_TO_LANDING.values())) == len(SOURCE_TO_LANDING)
     assert not set(FACT_COLUMNS) & set(DB_MANAGED_COLUMNS)
+
+
+# ---------------------------------------------------------------------
+# Live-database drift guard
+# ---------------------------------------------------------------------
+def _live(*, drop=None, add=None, reorder=False):
+    cols = list(FACT_COLUMNS) + list(DB_MANAGED_COLUMNS)
+    if drop:
+        cols = [c for c in cols if c != drop]
+    if add:
+        cols.append(add)
+    if reorder:
+        cols[0], cols[1] = cols[1], cols[0]
+    return cols
+
+
+def test_matching_live_schema_passes():
+    # must not raise
+    assert_live_fact_schema(_live())
+
+
+def test_missing_column_is_named_in_the_error():
+    with pytest.raises(ValueError, match=r"missing from the database.*airline"):
+        assert_live_fact_schema(_live(drop="airline"))
+
+
+def test_undeclared_column_is_named_in_the_error():
+    """The revenue_bdt case: DDL edited, database still holding the old shape."""
+    with pytest.raises(ValueError, match=r"not declared.*revenue_bdt"):
+        assert_live_fact_schema(_live(add="revenue_bdt"))
+
+
+def test_column_order_difference_is_caught():
+    """Order matters: the transfer is a positional COPY, so same-names-wrong-
+    order would load every value into the wrong column without erroring."""
+    with pytest.raises(ValueError, match="ORDER differs"):
+        assert_live_fact_schema(_live(reorder=True))
+
+
+def test_error_explains_why_the_ddl_edit_did_not_apply():
+    with pytest.raises(ValueError, match="CREATE TABLE IF NOT EXISTS cannot alter"):
+        assert_live_fact_schema(_live(drop="markup_pct"))

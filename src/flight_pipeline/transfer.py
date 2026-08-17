@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 from flight_pipeline.db import Connect, read_cursor, transaction
-from flight_pipeline.schema import fact_column_list
+from flight_pipeline.schema import assert_live_fact_schema, fact_column_list
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +44,14 @@ def copy_staging_to_fact(
         read_cursor(mysql_connect) as my_cur,
         transaction(postgres_connect) as pg_cur,
     ):
+        # Check the live table matches the contract BEFORE deleting anything.
+        # Otherwise a drifted schema is discovered mid-COPY, after the DELETE.
+        pg_cur.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'fct_flights' ORDER BY ordinal_position"
+        )
+        assert_live_fact_schema([row[0] for row in pg_cur.fetchall()])
+
         my_cur.execute(f"SELECT {col_list} FROM stg_flights ORDER BY raw_row_num")
 
         # Full refresh, so the task is safe to clear and re-run.
