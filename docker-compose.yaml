@@ -49,7 +49,10 @@ x-airflow-common: &airflow-common
       condition: service_healthy
 
 services:
-  # Airflow's own metadata database. Internal only.
+  # Airflow's own metadata database. No host port at all -- reachable only from
+  # inside the compose network, which is why these credentials are static
+  # rather than generated. Changing them needs the volume wiped, since Postgres
+  # only applies POSTGRES_PASSWORD on first initialisation.
   airflow-meta:
     image: postgres:16
     environment:
@@ -74,7 +77,9 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     ports:
-      - "${MYSQL_HOST_PORT:-3307}:3306"
+      # 127.0.0.1 so the database is reachable from this machine only.
+      # A bare "3307:3306" binds 0.0.0.0 and exposes it to the whole LAN.
+      - "127.0.0.1:${MYSQL_HOST_PORT:-3307}:3306"
     volumes:
       - mysql-staging-data:/var/lib/mysql
     healthcheck:
@@ -93,7 +98,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "${POSTGRES_HOST_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - postgres-analytics-data:/var/lib/postgresql/data
     healthcheck:
@@ -109,7 +114,8 @@ services:
     <<: *airflow-common
     command: api-server
     ports:
-      - "${AIRFLOW_UI_PORT:-8080}:8080"
+      # Loopback only: the UI ships with default credentials.
+      - "127.0.0.1:${AIRFLOW_UI_PORT:-8080}:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
       interval: 30s
