@@ -50,6 +50,16 @@ validation:
   datetime_format: '%Y-%m-%d %H:%i:%s'
   datetime_regex: '^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}$'
 
+  # Matches an optionally-signed decimal. Was written out thirteen separate
+  # times in the quarantine SQL — the same duplication the datetime guard had,
+  # left behind when that one was fixed.
+  numeric_regex: '^[+-]?[0-9]+(\.[0-9]+)?$'
+
+  # Sanity bound on flight duration. The profiled range is 0.5–15.83 hours;
+  # 48 is loose enough not to reject real long-haul routing yet tight enough
+  # to catch a unit error (minutes stored as hours) or a parsing slip.
+  max_duration_hrs: 48
+
 business_rules:
   # 2,522 rows (4.42%) carry total = (base + tax) * 1.2 EXACTLY — min, median
   # and max discrepancy all 16.6667%, zero rows under. Deterministic, so it is

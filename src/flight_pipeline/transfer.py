@@ -7,13 +7,11 @@ callables supplied by the DAG.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 
+from flight_pipeline.db import Connect, read_cursor, transaction
 from flight_pipeline.schema import fact_column_list
 
 log = logging.getLogger(__name__)
-
-Connect = Callable[[], object]
 
 
 def copy_staging_to_fact(
@@ -37,30 +35,28 @@ def copy_staging_to_fact(
     """
     col_list = fact_column_list()
 
-    my_conn = mysql_connect()
-    my_cur = my_conn.cursor()
-    my_cur.execute(f"SELECT {col_list} FROM stg_flights ORDER BY raw_row_num")
-
-    pg_conn = postgres_connect()
-    pg_cur = pg_conn.cursor()
-    # Full refresh, so the task is safe to clear and re-run.
-    pg_cur.execute("DELETE FROM fct_flights")
-
     moved = 0
-    with pg_cur.copy(f"COPY fct_flights ({col_list}) FROM STDIN") as copy:
-        while True:
-            chunk = my_cur.fetchmany(batch_size)
-            if not chunk:
-                break
-            for row in chunk:
-                copy.write_row(row)
-            moved += len(chunk)
+    # The DELETE and the COPY share one transaction. If the COPY fails partway
+    # the delete is rolled back too, so a failed transfer leaves the previous
+    # good fact table intact rather than an empty or half-filled one. Both
+    # connections close on any exit path.
+    with (
+        read_cursor(mysql_connect) as my_cur,
+        transaction(postgres_connect) as pg_cur,
+    ):
+        my_cur.execute(f"SELECT {col_list} FROM stg_flights ORDER BY raw_row_num")
 
-    pg_conn.commit()
-    pg_cur.close()
-    pg_conn.close()
-    my_cur.close()
-    my_conn.close()
+        # Full refresh, so the task is safe to clear and re-run.
+        pg_cur.execute("DELETE FROM fct_flights")
+
+        with pg_cur.copy(f"COPY fct_flights ({col_list}) FROM STDIN") as copy:
+            while True:
+                chunk = my_cur.fetchmany(batch_size)
+                if not chunk:
+                    break
+                for row in chunk:
+                    copy.write_row(row)
+                moved += len(chunk)
 
     log.info("transferred %s rows into fct_flights", moved)
     return moved

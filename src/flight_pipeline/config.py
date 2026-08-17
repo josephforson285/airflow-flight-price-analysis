@@ -51,6 +51,8 @@ class Validation:
     fare_tolerance_bdt: float
     datetime_format: str
     datetime_regex: str
+    numeric_regex: str
+    max_duration_hrs: float
 
 
 @dataclass(frozen=True)
@@ -112,6 +114,8 @@ def get_config(config_path: str | None = None) -> Config:
             fare_tolerance_bdt=tolerance,
             datetime_format=val["datetime_format"],
             datetime_regex=val["datetime_regex"],
+            numeric_regex=val["numeric_regex"],
+            max_duration_hrs=float(val["max_duration_hrs"]),
         ),
         business_rules=BusinessRules(
             fare_markup_factor=float(rules["fare_markup_factor"]),

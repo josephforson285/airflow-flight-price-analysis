@@ -57,7 +57,7 @@ flowchart TD
 
     CSV -->|"ingest · RFC 4180 · no casting"| RAW
     REF -.->|"domain membership"| RAW
-    RAW -->|"11 validation rules"| REJ
+    RAW -->|"13 validation rules"| REJ
     RAW -->|"cast · derive · exclude rejects"| STG
     STG -->|"COPY FROM STDIN"| FCT
     FCT --> K1
@@ -179,7 +179,7 @@ Zero nulls, zero negatives, zero duplicates means every validation check passes
 on the real file and the quarantine path never executes — untested code that
 merely *looks* like protection.
 
-`include/data/fixtures/corrupted_sample.csv` therefore ships 27 rows: 14 pristine,
+`include/data/fixtures/corrupted_sample.csv` therefore ships 31 rows: 14 pristine,
 12 carrying one deliberate defect each (null FK, negative fare, non-numeric in a
 numeric column, arithmetic violation, arrival-before-departure, self-route,
 missing measure, negative lead time, unparseable date, unknown category, invalid

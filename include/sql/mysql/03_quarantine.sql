@@ -17,28 +17,47 @@ DELETE FROM rejects_flight_prices;
 
 -- ---------------------------------------------------------------------
 -- 1. Required fields missing / blank
+--
+-- Covers EVERY column that is NOT NULL in stg_flights, not just the six the
+-- brief names. The earlier version checked seven; staging declares twenty-odd
+-- NOT NULL. A blank aircraft_type or booking_source therefore passed
+-- quarantine and then blew up on the INSERT into stg_flights with a driver
+-- constraint error naming no row — exactly the opaque failure the landing
+-- zone exists to prevent.
+--
+-- The blank list is computed once in a derived table and reused as the
+-- filter, rather than restating seventeen conditions in the WHERE clause.
 -- ---------------------------------------------------------------------
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
-SELECT batch_id, raw_row_num, 'MISSING_REQUIRED',
-       CONCAT_WS(',',
-         CASE WHEN TRIM(COALESCE(airline,''))            = '' THEN 'airline'            END,
-         CASE WHEN TRIM(COALESCE(source_code,''))        = '' THEN 'source_code'        END,
-         CASE WHEN TRIM(COALESCE(destination_code,''))   = '' THEN 'destination_code'   END,
-         CASE WHEN TRIM(COALESCE(base_fare_bdt,''))      = '' THEN 'base_fare_bdt'      END,
-         CASE WHEN TRIM(COALESCE(tax_surcharge_bdt,''))  = '' THEN 'tax_surcharge_bdt'  END,
-         CASE WHEN TRIM(COALESCE(total_fare_bdt,''))     = '' THEN 'total_fare_bdt'     END,
-         CASE WHEN TRIM(COALESCE(seasonality,''))        = '' THEN 'seasonality'        END),
-       JSON_OBJECT('airline', airline, 'source', source_code, 'destination', destination_code,
-                   'base', base_fare_bdt, 'tax', tax_surcharge_bdt, 'total', total_fare_bdt)
-FROM raw_flight_prices
-WHERE batch_id = '{{ run_id }}'
-  AND (   TRIM(COALESCE(airline,''))           = ''
-       OR TRIM(COALESCE(source_code,''))       = ''
-       OR TRIM(COALESCE(destination_code,''))  = ''
-       OR TRIM(COALESCE(base_fare_bdt,''))     = ''
-       OR TRIM(COALESCE(tax_surcharge_bdt,'')) = ''
-       OR TRIM(COALESCE(total_fare_bdt,''))    = ''
-       OR TRIM(COALESCE(seasonality,''))       = '');
+SELECT batch_id, raw_row_num, reason_code, blanks, payload
+FROM (
+    SELECT batch_id, raw_row_num, 'MISSING_REQUIRED' AS reason_code,
+           CONCAT_WS(',',
+             CASE WHEN TRIM(COALESCE(airline,''))               = '' THEN 'airline'               END,
+             CASE WHEN TRIM(COALESCE(source_code,''))           = '' THEN 'source_code'           END,
+             CASE WHEN TRIM(COALESCE(source_name,''))           = '' THEN 'source_name'           END,
+             CASE WHEN TRIM(COALESCE(destination_code,''))      = '' THEN 'destination_code'      END,
+             CASE WHEN TRIM(COALESCE(destination_name,''))      = '' THEN 'destination_name'      END,
+             CASE WHEN TRIM(COALESCE(departure_datetime,''))    = '' THEN 'departure_datetime'    END,
+             CASE WHEN TRIM(COALESCE(arrival_datetime,''))      = '' THEN 'arrival_datetime'      END,
+             CASE WHEN TRIM(COALESCE(duration_hrs,''))          = '' THEN 'duration_hrs'          END,
+             CASE WHEN TRIM(COALESCE(stopovers,''))             = '' THEN 'stopovers'             END,
+             CASE WHEN TRIM(COALESCE(aircraft_type,''))         = '' THEN 'aircraft_type'         END,
+             CASE WHEN TRIM(COALESCE(travel_class,''))          = '' THEN 'travel_class'          END,
+             CASE WHEN TRIM(COALESCE(booking_source,''))        = '' THEN 'booking_source'        END,
+             CASE WHEN TRIM(COALESCE(base_fare_bdt,''))         = '' THEN 'base_fare_bdt'         END,
+             CASE WHEN TRIM(COALESCE(tax_surcharge_bdt,''))     = '' THEN 'tax_surcharge_bdt'     END,
+             CASE WHEN TRIM(COALESCE(total_fare_bdt,''))        = '' THEN 'total_fare_bdt'        END,
+             CASE WHEN TRIM(COALESCE(seasonality,''))           = '' THEN 'seasonality'           END,
+             CASE WHEN TRIM(COALESCE(days_before_departure,'')) = '' THEN 'days_before_departure' END
+           ) AS blanks,
+           JSON_OBJECT('airline', airline, 'source', source_code,
+                       'destination', destination_code, 'base', base_fare_bdt,
+                       'tax', tax_surcharge_bdt, 'total', total_fare_bdt) AS payload
+    FROM raw_flight_prices
+    WHERE batch_id = '{{ run_id }}'
+) candidates
+WHERE blanks <> '';
 
 -- ---------------------------------------------------------------------
 -- 2. Fare columns that are not numeric at all ("N/A", "", "abc")
@@ -46,15 +65,15 @@ WHERE batch_id = '{{ run_id }}'
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
 SELECT batch_id, raw_row_num, 'NON_NUMERIC_FARE',
        CONCAT_WS(',',
-         CASE WHEN COALESCE(base_fare_bdt,'')     NOT REGEXP '^[+-]?[0-9]+(\\.[0-9]+)?$' THEN 'base_fare_bdt'     END,
-         CASE WHEN COALESCE(tax_surcharge_bdt,'') NOT REGEXP '^[+-]?[0-9]+(\\.[0-9]+)?$' THEN 'tax_surcharge_bdt' END,
-         CASE WHEN COALESCE(total_fare_bdt,'')    NOT REGEXP '^[+-]?[0-9]+(\\.[0-9]+)?$' THEN 'total_fare_bdt'    END),
+         CASE WHEN COALESCE(base_fare_bdt,'')     NOT REGEXP '{{ num_regex }}' THEN 'base_fare_bdt'     END,
+         CASE WHEN COALESCE(tax_surcharge_bdt,'') NOT REGEXP '{{ num_regex }}' THEN 'tax_surcharge_bdt' END,
+         CASE WHEN COALESCE(total_fare_bdt,'')    NOT REGEXP '{{ num_regex }}' THEN 'total_fare_bdt'    END),
        JSON_OBJECT('base', base_fare_bdt, 'tax', tax_surcharge_bdt, 'total', total_fare_bdt)
 FROM raw_flight_prices
 WHERE batch_id = '{{ run_id }}'
-  AND (   COALESCE(base_fare_bdt,'')     NOT REGEXP '^[+-]?[0-9]+(\\.[0-9]+)?$'
-       OR COALESCE(tax_surcharge_bdt,'') NOT REGEXP '^[+-]?[0-9]+(\\.[0-9]+)?$'
-       OR COALESCE(total_fare_bdt,'')    NOT REGEXP '^[+-]?[0-9]+(\\.[0-9]+)?$');
+  AND (   COALESCE(base_fare_bdt,'')     NOT REGEXP '{{ num_regex }}'
+       OR COALESCE(tax_surcharge_bdt,'') NOT REGEXP '{{ num_regex }}'
+       OR COALESCE(total_fare_bdt,'')    NOT REGEXP '{{ num_regex }}');
 
 -- ---------------------------------------------------------------------
 -- 3. Numeric but negative
@@ -65,9 +84,9 @@ SELECT batch_id, raw_row_num, 'NEGATIVE_FARE',
        JSON_OBJECT('base', base_fare_bdt, 'tax', tax_surcharge_bdt, 'total', total_fare_bdt)
 FROM raw_flight_prices
 WHERE batch_id = '{{ run_id }}'
-  AND base_fare_bdt     REGEXP '^[+-]?[0-9]+(\\.[0-9]+)?$'
-  AND tax_surcharge_bdt REGEXP '^[+-]?[0-9]+(\\.[0-9]+)?$'
-  AND total_fare_bdt    REGEXP '^[+-]?[0-9]+(\\.[0-9]+)?$'
+  AND base_fare_bdt     REGEXP '{{ num_regex }}'
+  AND tax_surcharge_bdt REGEXP '{{ num_regex }}'
+  AND total_fare_bdt    REGEXP '{{ num_regex }}'
   AND (   CAST(base_fare_bdt     AS DECIMAL(20,10)) < 0
        OR CAST(tax_surcharge_bdt AS DECIMAL(20,10)) < 0
        OR CAST(total_fare_bdt    AS DECIMAL(20,10)) < 0);
@@ -158,7 +177,7 @@ SELECT batch_id, raw_row_num, 'NEGATIVE_LEAD_TIME',
        JSON_OBJECT('days_before_departure', days_before_departure)
 FROM raw_flight_prices
 WHERE batch_id = '{{ run_id }}'
-  AND days_before_departure REGEXP '^[+-]?[0-9]+(\\.[0-9]+)?$'
+  AND days_before_departure REGEXP '{{ num_regex }}'
   AND CAST(days_before_departure AS DECIMAL(20,10)) < 0;
 
 -- ---------------------------------------------------------------------
@@ -179,9 +198,9 @@ SELECT batch_id, raw_row_num, 'FARE_ARITHMETIC',
        JSON_OBJECT('base', base_fare_bdt, 'tax', tax_surcharge_bdt, 'total', total_fare_bdt)
 FROM raw_flight_prices
 WHERE batch_id = '{{ run_id }}'
-  AND base_fare_bdt     REGEXP '^[+-]?[0-9]+(\\.[0-9]+)?$'
-  AND tax_surcharge_bdt REGEXP '^[+-]?[0-9]+(\\.[0-9]+)?$'
-  AND total_fare_bdt    REGEXP '^[+-]?[0-9]+(\\.[0-9]+)?$'
+  AND base_fare_bdt     REGEXP '{{ num_regex }}'
+  AND tax_surcharge_bdt REGEXP '{{ num_regex }}'
+  AND total_fare_bdt    REGEXP '{{ num_regex }}'
   -- differs from base + tax ...
   AND ABS(CAST(total_fare_bdt AS DECIMAL(20,10))
           - (CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10))))
@@ -237,3 +256,46 @@ SELECT batch_id, raw_row_num, 'DUPLICATE_ROW',
        NULL
 FROM ranked
 WHERE occurrence > 1;
+
+-- ---------------------------------------------------------------------
+-- 12. Non-numeric measures.
+--
+-- duration_hrs had NO validation at all, and days_before_departure was only
+-- checked for being negative — a check that silently skipped any value that
+-- was not a number in the first place. Both are cast in the staging build and
+-- both land in NOT NULL columns, so junk here produced a cast warning or a
+-- constraint error at INSERT time rather than an inspectable reject.
+-- ---------------------------------------------------------------------
+INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
+SELECT batch_id, raw_row_num, 'NON_NUMERIC_MEASURE',
+       CONCAT_WS(',',
+         CASE WHEN COALESCE(duration_hrs,'')          NOT REGEXP '{{ num_regex }}' THEN CONCAT('duration_hrs=', duration_hrs)                   END,
+         CASE WHEN COALESCE(days_before_departure,'') NOT REGEXP '{{ num_regex }}' THEN CONCAT('days_before_departure=', days_before_departure) END),
+       JSON_OBJECT('duration_hrs', duration_hrs,
+                   'days_before_departure', days_before_departure)
+FROM raw_flight_prices
+WHERE batch_id = '{{ run_id }}'
+  AND (   COALESCE(duration_hrs,'')          NOT REGEXP '{{ num_regex }}'
+       OR COALESCE(days_before_departure,'') NOT REGEXP '{{ num_regex }}');
+
+-- ---------------------------------------------------------------------
+-- 13. Implausible duration.
+--
+-- A flight cannot take zero or negative time, and a value beyond the
+-- configured bound is far more likely a unit error (minutes recorded as
+-- hours) than a real itinerary. Profiled range is 0.5–15.83 hours.
+--
+-- validate_stg_flights already asserts duration_hrs > 0, but that runs AFTER
+-- the staging build: it would fail the run rather than quarantine the row,
+-- which is the wrong response to one bad record among 57,000.
+-- ---------------------------------------------------------------------
+INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
+SELECT batch_id, raw_row_num, 'IMPLAUSIBLE_DURATION',
+       CONCAT('duration_hrs=', duration_hrs,
+              ' (expected > 0 and <= {{ max_duration_hrs }})'),
+       JSON_OBJECT('duration_hrs', duration_hrs)
+FROM raw_flight_prices
+WHERE batch_id = '{{ run_id }}'
+  AND duration_hrs REGEXP '{{ num_regex }}'
+  AND (   CAST(duration_hrs AS DECIMAL(20,10)) <= 0
+       OR CAST(duration_hrs AS DECIMAL(20,10)) > {{ max_duration_hrs }});

@@ -31,7 +31,7 @@ the boundary between them is where a specific class of failure is caught.
                     ▼
    MySQL   raw_flight_prices                     landing zone, every column VARCHAR
                     │
-                    │  ② VALIDATE — 11 rules
+                    │  ② VALIDATE — 13 rules
                     ├──────────────────────────► rejects_flight_prices
                     │                            one row per (source row, rule broken)
                     │  ③ CAST + DERIVE
@@ -162,6 +162,7 @@ hundredths of a second.
 | CSV load, reference seeding | `src/flight_pipeline/ingest.py` |
 | Cross-engine transfer | `src/flight_pipeline/transfer.py` |
 | Gate decisions | `src/flight_pipeline/checks.py` |
+| Connection type, transaction/rollback handling | `src/flight_pipeline/db.py` |
 | Orchestration only | `dags/flight_price_pipeline.py` |
 
 Three principles drove the split, each fixing a defect the first version had:
@@ -237,6 +238,14 @@ something, and it is the DAG's only leaf.
 | `FARE_ARITHMETIC` | `base + tax ≠ total`, *excluding* the known ×1.2 pattern |
 | `UNKNOWN_AIRPORT` | Airport code absent from `ref_airports` — the brief's "invalid city names" |
 | `DUPLICATE_ROW` | Exact duplicate; first occurrence kept |
+| `NON_NUMERIC_MEASURE` | `duration_hrs` or `days_before_departure` not a number |
+| `IMPLAUSIBLE_DURATION` | Duration ≤ 0 or beyond the configured bound (48 h) |
+
+`MISSING_REQUIRED` covers **every** column declared `NOT NULL` in
+`stg_flights`, not only the six the brief names. An earlier version checked
+seven; a blank `aircraft_type` or `booking_source` therefore passed quarantine
+and then failed the staging `INSERT` on a constraint error naming no row —
+precisely the opaque failure the landing zone exists to prevent.
 
 A row breaking several rules produces several reject records. Recording only
 the first violation would hide the rest from whoever has to fix the source.
@@ -324,11 +333,25 @@ concentrated into narrow, immovable travel windows.
 count.
 
 ```
-bookings      = COUNT(*)                          GROUP BY airline
-share_pct     = 100 × COUNT(*) / total_bookings
-routes_served = COUNT(DISTINCT (source, destination))
-revenue_bdt   = SUM(total_fare_reported_bdt)
+bookings       = COUNT(*)                          GROUP BY airline
+share_pct      = 100 × COUNT(*) / total_bookings
+routes_served  = COUNT(DISTINCT (source, destination))
+total_fare_bdt = SUM(total_fare_reported_bdt)
 ```
+
+**On the words "bookings" and "revenue".** The brief names this KPI "Booking
+Count by Airline", so the column keeps that name — but the dataset does not
+evidence a booking. All 57,000 rows are distinct
+`(airline, source, destination, departure time)` combinations, **no flight
+appears twice**, and there is no booking identifier, passenger count or seat
+quantity; `booking_source` records a channel, not a transaction. Each row is
+one priced flight record.
+
+That distinction matters for the second measure. This column was originally
+called `revenue_bdt`, which was wrong: revenue requires seats sold, and
+summing advertised fares across unique flight records is not that. It is
+renamed `total_fare_bdt` — the sum is still a useful exposure measure, as long
+as it is not called something it isn't.
 
 Source: [`12_kpi_bookings_by_airline.sql`](../include/sql/postgres/12_kpi_bookings_by_airline.sql).
 
@@ -405,8 +428,8 @@ pass against the real file, meaning the entire quarantine path would never
 execute. That is untested code that merely *looks* like protection.
 
 **Resolution.** A deliberately corrupted fixture,
-`include/data/fixtures/corrupted_sample.csv`: 27 rows comprising 14 pristine
-records, 12 each carrying one planted defect, and one exact duplicate. The
+`include/data/fixtures/corrupted_sample.csv`: 31 rows comprising 14 pristine
+records, 16 each carrying one planted defect, and one exact duplicate. The
 same DAG runs against it by overriding `source_csv_path` at trigger time — no
 code change. Two runs are performed: one at the strict 5% threshold to prove
 the gate blocks, and one at a relaxed threshold to prove the downstream path
@@ -583,6 +606,59 @@ one, and the disagreement recorded. This satisfies the intent of the
 requirement while surfacing a genuine finding that a blind recomputation would
 have destroyed.
 
+### 4.11 `CREATE TABLE IF NOT EXISTS` cannot evolve a schema
+
+**Problem.** Renaming `revenue_bdt` to `total_fare_bdt` in the analytics DDL
+appeared to work — the DDL task went green — and then `kpi_bookings_by_airline`
+failed on a column that "should" have existed. `IF NOT EXISTS` is a no-op
+against an existing table: the file said one thing and the database kept
+another, silently.
+
+**Resolution.** The four KPI marts are derived, rebuilt in full every run and
+have no dependents, so they are now `DROP` then `CREATE`. The DDL file becomes
+the schema, always. `fct_flights` deliberately keeps `IF NOT EXISTS` because it
+is the load target rather than a derivative — changing *its* shape needs a real
+migration tool, which this project does not have and which is recorded as a
+known limitation rather than pretended away.
+
+### 4.12 Database code had no failure path
+
+**Problem.** Every database function opened a connection, worked, committed and
+closed. If anything raised in between, the commit never ran, the rollback never
+ran, and the connection was never closed — it leaked until garbage collection
+while holding server-side locks and a connection slot. A load that failed
+halfway left an open transaction for the server to time out.
+
+**Resolution.** A `transaction()` context manager in
+`src/flight_pipeline/db.py`: commit on success, rollback on any exception,
+close on every path. It catches `BaseException` rather than `Exception`, so a
+task killed by SIGTERM — Airflow marking it `up_for_retry`, a pod eviction —
+also rolls back instead of leaving a half-applied batch. Being a context
+manager, it cannot be forgotten at a new call site the way a stray
+`conn.close()` can.
+
+The two writes that span multiple statements are now genuinely atomic: the
+reference seed loads both tables or neither (seeding airports but failing on
+allowed values would leave `UNKNOWN_AIRPORT` armed and `UNKNOWN_CATEGORY`
+silently passing everything), and the transfer's `DELETE` plus `COPY` share one
+transaction, so a failed transfer leaves the previous good fact table intact
+rather than an empty one.
+
+### 4.13 The data does not evidence "bookings" or "revenue"
+
+**Problem.** Both words were being used as though the dataset supported them.
+It does not: all 57,000 rows are distinct
+`(airline, source, destination, departure time)` combinations, **no flight
+appears twice**, and there is no booking identifier, passenger count or seat
+quantity. Each row is one priced flight record.
+
+**Resolution.** `bookings` is retained because it is the brief's own term for
+the KPI, with the assumption stated in the report and beside the SQL.
+`revenue_bdt` — which was this project's invention, not the brief's — is
+renamed `total_fare_bdt`, because revenue requires seats sold and a sum of
+advertised fares over unique flight records is not that. The measure is still
+published; it is simply no longer called something it isn't.
+
 ---
 
 ## 5. Deviations from the brief
@@ -622,22 +698,23 @@ markup rows flagged     2,522     = 4.42%, matching independent profiling
 ### 6.2 Fixture run — strict threshold (gate must block)
 
 ```
-ingested                   27
-distinct rows rejected     13     = 48.1% > 5% threshold
+ingested                   31
+distinct rows rejected     17     = 54.8% > 5% threshold
 outcome                    assert_reject_rate FAILED, pipeline halted
                            before publishing anything
 ```
 
-Reject breakdown: `MISSING_REQUIRED` 3, `FARE_ARITHMETIC` 2,
-`NON_NUMERIC_FARE` 2, and one each of `ARRIVAL_BEFORE_DEPARTURE`,
-`DUPLICATE_ROW`, `NEGATIVE_FARE`, `NEGATIVE_LEAD_TIME`, `SELF_ROUTE`,
-`UNKNOWN_AIRPORT`, `UNKNOWN_CATEGORY`, `UNPARSEABLE_DATE`.
+Reject breakdown across all 13 rules: `MISSING_REQUIRED` 4,
+`FARE_ARITHMETIC` 2, `NON_NUMERIC_FARE` 2, `NON_NUMERIC_MEASURE` 2, and one
+each of `ARRIVAL_BEFORE_DEPARTURE`, `DUPLICATE_ROW`, `IMPLAUSIBLE_DURATION`,
+`NEGATIVE_FARE`, `NEGATIVE_LEAD_TIME`, `SELF_ROUTE`, `UNKNOWN_AIRPORT`,
+`UNKNOWN_CATEGORY`, `UNPARSEABLE_DATE`.
 
 ### 6.3 Fixture run — relaxed threshold (downstream must exclude rejects)
 
 ```
-ingested                   27
-rejected                   13
+ingested                   31
+rejected                   17
 fct_flights                14     ← exactly the clean rows
 all four KPI tables        populated, pipeline green
 ```

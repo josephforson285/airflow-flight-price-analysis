@@ -10,11 +10,10 @@ is separated out and unit-tested directly, with no database involved.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+
+from flight_pipeline.db import Connect, read_cursor
 
 log = logging.getLogger(__name__)
-
-Connect = Callable[[], object]
 
 KPI_TABLES = (
     "fct_flights",
@@ -92,18 +91,18 @@ def _scalar(cursor, sql: str):
 
 
 def check_reject_rate(connect: Connect, ingested: int, threshold: float) -> dict:
-    conn = connect()
-    cursor = conn.cursor()
-    rejected = int(
-        _scalar(cursor, "SELECT COUNT(DISTINCT raw_row_num) FROM rejects_flight_prices")
-    )
-    cursor.execute(
-        "SELECT reason_code, COUNT(*) FROM rejects_flight_prices "
-        "GROUP BY reason_code ORDER BY 2 DESC"
-    )
-    breakdown = {reason: int(count) for reason, count in cursor.fetchall()}
-    cursor.close()
-    conn.close()
+    with read_cursor(connect) as cursor:
+        rejected = int(
+            _scalar(
+                cursor,
+                "SELECT COUNT(DISTINCT raw_row_num) FROM rejects_flight_prices",
+            )
+        )
+        cursor.execute(
+            "SELECT reason_code, COUNT(*) FROM rejects_flight_prices "
+            "GROUP BY reason_code ORDER BY 2 DESC"
+        )
+        breakdown = {reason: int(count) for reason, count in cursor.fetchall()}
 
     log.info("rejected %s of %s rows", rejected, ingested)
     for reason, count in breakdown.items():
@@ -119,15 +118,12 @@ def check_reject_rate(connect: Connect, ingested: int, threshold: float) -> dict
 
 
 def check_kpis_populated(connect: Connect, expected_rows: int) -> dict:
-    conn = connect()
-    cursor = conn.cursor()
-    counts = {
-        table: int(_scalar(cursor, f"SELECT COUNT(*) FROM {table}"))
-        for table in KPI_TABLES
-    }
-    booked = int(_scalar(cursor, "SELECT SUM(bookings) FROM kpi_bookings_by_airline"))
-    cursor.close()
-    conn.close()
+    with read_cursor(connect) as cursor:
+        counts = {
+            table: int(_scalar(cursor, f"SELECT COUNT(*) FROM {table}"))
+            for table in KPI_TABLES
+        }
+        booked = int(_scalar(cursor, "SELECT SUM(bookings) FROM kpi_bookings_by_airline"))
 
     for table, count in counts.items():
         log.info("%-26s %s rows", table, count)

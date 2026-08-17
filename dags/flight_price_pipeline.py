@@ -68,6 +68,8 @@ def postgres_connect():
     user_defined_macros={
         "dt_regex": CONFIG.validation.datetime_regex,
         "dt_format": CONFIG.validation.datetime_format,
+        "num_regex": CONFIG.validation.numeric_regex,
+        "max_duration_hrs": CONFIG.validation.max_duration_hrs,
         "markup_factor": CONFIG.business_rules.fare_markup_factor,
         "regular_season": CONFIG.business_rules.regular_season_label,
     },

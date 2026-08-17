@@ -14,11 +14,10 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
+from flight_pipeline.db import Connect, transaction
 from flight_pipeline.schema import REQUIRED_SOURCE_COLUMNS, SOURCE_TO_LANDING
 
 log = logging.getLogger(__name__)
-
-Connect = Callable[[], object]
 
 
 def validate_header(header: list[str]) -> None:
@@ -71,28 +70,24 @@ def load_csv_to_landing(
             f"VALUES ({placeholders})"
         )
 
-        conn = connect()
-        conn.autocommit(False)
-        cursor = conn.cursor()
-        # Idempotency: clear before loading. Re-running must not append a
-        # second copy — a bare INSERT would double every downstream count.
-        cursor.execute("DELETE FROM raw_flight_prices")
-
-        buffer: list[tuple] = []
         total = 0
-        for line_no, row in enumerate(reader, start=1):
-            buffer.append((batch_id, line_no, *[row[c] for c in header]))
-            if len(buffer) >= batch_size:
+        # One transaction for the whole load: a failure halfway through must
+        # not leave a partial batch behind for the quarantine pass to validate.
+        with transaction(connect) as cursor:
+            # Idempotency: clear before loading. Re-running must not append a
+            # second copy — a bare INSERT would double every downstream count.
+            cursor.execute("DELETE FROM raw_flight_prices")
+
+            buffer: list[tuple] = []
+            for line_no, row in enumerate(reader, start=1):
+                buffer.append((batch_id, line_no, *[row[c] for c in header]))
+                if len(buffer) >= batch_size:
+                    cursor.executemany(insert_sql, buffer)
+                    total += len(buffer)
+                    buffer.clear()
+            if buffer:
                 cursor.executemany(insert_sql, buffer)
                 total += len(buffer)
-                buffer.clear()
-        if buffer:
-            cursor.executemany(insert_sql, buffer)
-            total += len(buffer)
-
-        conn.commit()
-        cursor.close()
-        conn.close()
 
     log.info("ingested %s rows from %s as batch %s", total, path, batch_id)
     return total
@@ -133,27 +128,23 @@ def seed_reference_tables(
         ),
     )
 
-    conn = connect()
-    conn.autocommit(False)
-    cursor = conn.cursor()
-
-    cursor.execute("DELETE FROM ref_airports")
-    cursor.executemany(
-        "INSERT INTO ref_airports "
-        "(airport_code, airport_name, is_origin, is_destination) "
-        "VALUES (%s, %s, %s, %s)",
-        airports,
-    )
-    cursor.execute("DELETE FROM ref_allowed_values")
-    cursor.executemany(
-        "INSERT INTO ref_allowed_values "
-        "(field_name, allowed_value, numeric_equivalent) VALUES (%s, %s, %s)",
-        allowed,
-    )
-
-    conn.commit()
-    cursor.close()
-    conn.close()
+    # Both tables in ONE transaction. Seeding airports but failing on allowed
+    # values would leave the validation rules half-armed — UNKNOWN_AIRPORT
+    # working, UNKNOWN_CATEGORY silently passing everything.
+    with transaction(connect) as cursor:
+        cursor.execute("DELETE FROM ref_airports")
+        cursor.executemany(
+            "INSERT INTO ref_airports "
+            "(airport_code, airport_name, is_origin, is_destination) "
+            "VALUES (%s, %s, %s, %s)",
+            airports,
+        )
+        cursor.execute("DELETE FROM ref_allowed_values")
+        cursor.executemany(
+            "INSERT INTO ref_allowed_values "
+            "(field_name, allowed_value, numeric_equivalent) VALUES (%s, %s, %s)",
+            allowed,
+        )
 
     log.info("seeded %s airports, %s allowed values", len(airports), len(allowed))
     return {"airports": len(airports), "allowed_values": len(allowed)}
