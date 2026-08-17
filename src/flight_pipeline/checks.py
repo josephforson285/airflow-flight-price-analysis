@@ -1,10 +1,8 @@
 """The pipeline's gates.
 
-Each gate is split in two: a pure decision function that takes numbers and
-raises, and a thin wrapper that fetches those numbers from a database. The
-decision logic is where the bugs live and where the edge cases are — zero
-rows, a rate exactly on the threshold, a KPI that fails to reconcile — so it
-is separated out and unit-tested directly, with no database involved.
+Each is split in two: a pure decision function that takes numbers and raises,
+and a thin wrapper that fetches them. The decision logic is where the edge
+cases live, so it is unit-tested directly with no database involved.
 """
 
 from __future__ import annotations
@@ -35,9 +33,8 @@ def evaluate_reject_rate(
 ) -> float:
     """Return the reject rate, raising if the run should not proceed.
 
-    An empty ingest is treated as a failure rather than a 0% reject rate. A
-    run that loaded nothing has not validated anything, and letting it through
-    would publish empty KPI tables over good ones.
+    An empty ingest fails rather than scoring a perfect 0%: a run that loaded
+    nothing has validated nothing, and would publish empty KPI tables.
     """
     if ingested <= 0:
         raise ValueError("no rows were ingested — refusing to continue")
@@ -62,9 +59,8 @@ def evaluate_kpi_counts(
 ) -> None:
     """Raise unless every KPI table is populated and reconciles.
 
-    The reconciliation is the part that matters. Non-empty only proves
-    something was written; equal to the fact table proves a GROUP BY did not
-    quietly drop rows.
+    Non-empty only proves something was written; matching the fact table
+    proves a GROUP BY did not quietly drop rows.
     """
     for table, count in counts.items():
         if count == 0:

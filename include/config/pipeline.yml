@@ -1,24 +1,11 @@
-# Pipeline configuration — the single place tunables live.
-#
-# Before this file, configuration was scattered across four locations: .env,
-# the compose environment block, DAG params, and module-level constants in the
-# DAG file. Worse, the most important business rule in the pipeline (the fare
-# markup factor) was a bare `1.2` literal in two SQL files while the trivial
-# rounding tolerance was a proper parameter.
-#
-# Rule of thumb applied here: anything a reviewer might reasonably ask "why
-# that number?" about belongs in this file, next to the answer.
-#
-# Secrets do NOT belong here — credentials stay in .env, which is gitignored.
+# Pipeline tunables. Secrets live in .env, not here.
 
 connections:
-  # Airflow connection ids, declared as AIRFLOW_CONN_* in docker-compose.yaml
   mysql: mysql_staging
   postgres: postgres_analytics
 
 paths:
-  # All relative to the include/ directory, which is resolved from
-  # AIRFLOW_HOME at runtime rather than hardcoded to /opt/airflow.
+  # Relative to include/, resolved from the project root at runtime.
   source_csv: data/raw/Flight_Price_Dataset_of_Bangladesh.csv
   reference_airports: data/reference/ref_airports.csv
   reference_allowed_values: data/reference/ref_allowed_values.csv
@@ -26,49 +13,26 @@ paths:
   sql: sql
 
 ingest:
-  # Rows per executemany / COPY chunk. Large enough to amortise round trips,
-  # small enough that neither side holds the dataset in memory.
   batch_size: 5000
 
 validation:
-  # Fraction of rows allowed to fail validation before the run fails.
-  #
-  # Derived from profiling, NOT intuition. The first value tried was 0.02,
-  # which would have failed every run on day one: the fare-markup anomaly
-  # alone affects 4.42% of rows.
+  # 5% not 2%: the fare-markup anomaly alone affects 4.42% of rows, so a
+  # tighter gate would fail every run.
   reject_rate_threshold: 0.05
-
-  # BDT tolerance when comparing fare arithmetic. The source stores money as
-  # 15-decimal floats, so exact equality is not a fair test.
   fare_tolerance_bdt: 0.01
 
-  # Timestamp handling. The regex guard is load-bearing: under MySQL 8 strict
-  # sql_mode, STR_TO_DATE raises error 1411 on unparseable input rather than
-  # returning NULL, so it must never be handed junk. Defined once here instead
-  # of being copy-pasted across eight call sites, where one typo in one copy
-  # would silently open a hole in validation.
   datetime_format: '%Y-%m-%d %H:%i:%s'
+  # Guards every STR_TO_DATE call: strict sql_mode raises on junk rather than
+  # returning NULL, so the function must never see it.
   datetime_regex: '^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}$'
-
-  # Matches an optionally-signed decimal. Was written out thirteen separate
-  # times in the quarantine SQL — the same duplication the datetime guard had,
-  # left behind when that one was fixed.
   numeric_regex: '^[+-]?[0-9]+(\.[0-9]+)?$'
 
-  # Sanity bound on flight duration. The profiled range is 0.5–15.83 hours;
-  # 48 is loose enough not to reject real long-haul routing yet tight enough
-  # to catch a unit error (minutes stored as hours) or a parsing slip.
+  # Profiled range is 0.5-15.83h; 48 catches a unit error without rejecting
+  # real long-haul routing.
   max_duration_hrs: 48
 
 business_rules:
-  # 2,522 rows (4.42%) carry total = (base + tax) * 1.2 EXACTLY — min, median
-  # and max discrepancy all 16.6667%, zero rows under. Deterministic, so it is
-  # flagged rather than rejected, and both fare values are preserved.
-  #
-  # This is the single most consequential number in the pipeline. It was
-  # previously an unlabelled `1.2` buried in two SQL files.
+  # 4.42% of rows carry total = (base + tax) * 1.2 exactly. Flagged, not
+  # rejected -- deterministic, so probably a rule rather than corruption.
   fare_markup_factor: 1.2
-
-  # Seasons other than this one are treated as peak. The source ships a
-  # Seasonality column, so no holiday calendar is needed.
   regular_season_label: Regular

@@ -1,18 +1,10 @@
 """Flight Price Analysis — CSV -> MySQL staging -> PostgreSQL analytics.
 
-This file is wiring, not implementation. It declares what runs, in what
-order, against which connection; the work itself lives in
-`src/flight_pipeline/`, which imports no Airflow at all and is therefore
-testable without a scheduler.
+Wiring only; the work lives in src/flight_pipeline/, which imports no Airflow.
 
-Orchestration principle: Airflow moves *control*; the databases move *data*.
-XCom carries row counts and batch ids, never DataFrames — it is backed by
-Airflow's own metadata database, so pushing a 57k-row payload through it
-would turn the orchestrator's bookkeeping store into a data warehouse.
-
-Re-runnability: every task is a full refresh (delete-then-load), so clearing
-and re-running any task leaves identical row counts. A bare INSERT would
-silently double every booking count on the second run.
+Airflow moves control, the databases move data: XCom carries row counts, never
+DataFrames. Every task is a full refresh, so re-running one cannot double a
+count.
 """
 
 from __future__ import annotations
@@ -83,11 +75,8 @@ def postgres_connect():
     },
 )
 def flight_price_pipeline():
-    # -----------------------------------------------------------------
-    # DDL. The two branches are independent — the analytics schema has no
-    # dependency on the staging work — so they build in parallel and only
-    # converge at the transfer.
-    # -----------------------------------------------------------------
+    # DDL. The two branches are independent, so they build in parallel and
+    # converge only at the transfer.
     create_staging_tables = SQLExecuteQueryOperator(
         task_id="create_staging_tables",
         conn_id=MYSQL_CONN_ID,
@@ -108,9 +97,7 @@ def flight_price_pipeline():
         return_last=False,
     )
 
-    # -----------------------------------------------------------------
-    # Ingest — independent of each other, so they run side by side
-    # -----------------------------------------------------------------
+    # Ingest — independent of each other, so they run side by side.
     @task
     def ingest_csv_to_mysql(**context) -> dict:
         run_id = context["run_id"]
@@ -132,9 +119,7 @@ def flight_price_pipeline():
             connect=mysql_connect,
         )
 
-    # -----------------------------------------------------------------
     # Validation
-    # -----------------------------------------------------------------
     quarantine_invalid_rows = SQLExecuteQueryOperator(
         task_id="quarantine_invalid_rows",
         conn_id=MYSQL_CONN_ID,
@@ -147,9 +132,8 @@ def flight_price_pipeline():
     def assert_reject_rate(ingest_result: dict, **context) -> dict:
         """Gate the run on the quarantine rate.
 
-        Its own task on purpose: the UI then shows precisely which gate
-        failed, and the threshold can be adjusted and this single task
-        re-run without re-ingesting.
+        Its own task so the UI shows which gate failed and it can be re-run
+        alone after adjusting the threshold.
         """
         return checks.check_reject_rate(
             connect=mysql_connect,
@@ -165,9 +149,8 @@ def flight_price_pipeline():
         return_last=False,
     )
 
-    # Declarative checks on the *typed* table, where they can be trusted.
-    # Running these against the raw VARCHAR landing table would compare
-    # strings and quietly pass.
+    # Declarative checks on the TYPED table: run against the VARCHAR landing
+    # table they would compare strings and quietly pass.
     validate_stg_flights = SQLColumnCheckOperator(
         task_id="validate_stg_flights",
         conn_id=MYSQL_CONN_ID,
@@ -182,9 +165,7 @@ def flight_price_pipeline():
         },
     )
 
-    # -----------------------------------------------------------------
     # Cross-engine transfer
-    # -----------------------------------------------------------------
     @task
     def transfer_to_postgres() -> dict:
         # SSCursor is server-side. MySQLdb's default buffers the entire result
@@ -200,9 +181,7 @@ def flight_price_pipeline():
         )
         return {"rows_transferred": moved}
 
-    # -----------------------------------------------------------------
-    # KPI marts — mutually independent, so they fan out
-    # -----------------------------------------------------------------
+    # KPI marts — mutually independent, so they fan out.
     kpi_tasks = [
         SQLExecuteQueryOperator(
             task_id=task_id,
@@ -221,20 +200,14 @@ def flight_price_pipeline():
 
     @task
     def assert_kpis_populated(transfer_result: dict) -> dict:
-        """Final gate.
-
-        A DAG that ends without asserting anything about its output can go
-        green while writing empty tables. This is the task that makes
-        "succeeded" mean something.
-        """
+        """Final gate: a DAG ending on a write can go green having written
+        nothing."""
         return checks.check_kpis_populated(
             connect=postgres_connect,
             expected_rows=int(transfer_result["rows_transferred"]),
         )
 
-    # -----------------------------------------------------------------
     # Dependencies
-    # -----------------------------------------------------------------
     ingested = ingest_csv_to_mysql()
     seeded = seed_reference_data()
     reject_gate = assert_reject_rate(ingested)

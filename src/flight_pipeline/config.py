@@ -1,13 +1,8 @@
 """Typed access to include/config/pipeline.yml.
 
-Paths are resolved from this file's own location rather than a hardcoded
-`/opt/airflow`. The repository layout and the container layout are the same
-shape — `src/`, `include/` and `dags/` all sit beside each other — so
-`parents[2]` lands on the project root in both, and the same code works in a
-container, in CI, and in a bare checkout with no environment variables set.
-
-Environment variables still override the three values that `.env` has always
-exposed, so existing deployment habits keep working.
+Paths resolve from this file's location, not a hardcoded /opt/airflow: the
+repo and container layouts are the same shape, so the same code works in a
+container, in CI and in a bare checkout.
 """
 
 from __future__ import annotations
@@ -23,10 +18,8 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INCLUDE_DIR = PROJECT_ROOT / "include"
 
-# Deliberately NOT config/ — that directory belongs to Airflow (airflow.cfg
-# lives there), and putting our file in it squats on someone else's namespace.
-# Under include/ it is also mounted into the containers, so tuning a threshold
-# does not require rebuilding the image.
+# Not config/ -- that belongs to Airflow. Under include/ it is also mounted,
+# so tuning a threshold needs no image rebuild.
 DEFAULT_CONFIG_PATH = INCLUDE_DIR / "config" / "pipeline.yml"
 
 

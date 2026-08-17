@@ -1,11 +1,4 @@
-"""CSV ingestion and reference seeding.
-
-No Airflow import anywhere in this module. Database access arrives as a
-`connect` callable returning a DB-API connection, which the DAG supplies from
-a hook. That inversion is what keeps this logic testable without a scheduler,
-a metadata database or a 3 GB image — and it is why these functions read as
-plain Python rather than as Airflow internals.
-"""
+"""CSV ingestion and reference seeding."""
 
 from __future__ import annotations
 
@@ -21,11 +14,10 @@ log = logging.getLogger(__name__)
 
 
 def validate_header(header: list[str]) -> None:
-    """Fail fast on a source file whose shape we do not recognise.
+    """Fail fast on an unrecognised source shape.
 
-    Two distinct failures, reported separately because the fixes differ: a
-    missing required column is a broken extract, whereas an unmapped column is
-    a schema change nobody told us about.
+    Reported separately because the fixes differ: a missing required column is
+    a broken extract, an unmapped one is an untold schema change.
     """
     missing = [c for c in REQUIRED_SOURCE_COLUMNS if c not in header]
     if missing:
@@ -46,13 +38,9 @@ def load_csv_to_landing(
 ) -> int:
     """Load the CSV into raw_flight_prices as text. Returns rows loaded.
 
-    Deliberately does not cast: every column lands as VARCHAR so a malformed
-    value fails a validation we wrote, on a row we can inspect, instead of
-    aborting the load with a driver error naming no row.
-
-    Deliberately does not split on commas: airport names contain them
-    ("...International Airport, Kolkata"), which yields 17, 18 or 19 fields
-    per row under naive splitting. csv.DictReader is RFC 4180 aware.
+    Does not cast, so a malformed value fails an inspectable validation rather
+    than aborting the load. Does not split on commas either -- airport names
+    contain them, so naive splitting yields 17, 18 or 19 fields per row.
     """
     path = Path(csv_path)
     if not path.is_file():
