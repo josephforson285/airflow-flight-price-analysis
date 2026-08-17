@@ -56,10 +56,12 @@ flowchart TD
     end
 
     CSV -->|"ingest · RFC 4180 · no casting"| RAW
-    REF -.->|"domain membership"| RAW
     RAW -->|"13 validation rules"| REJ
     RAW -->|"cast · derive · exclude rejects"| STG
     STG -->|"COPY FROM STDIN"| FCT
+
+    REF -. "domain membership" .-> REJ
+    REF -. "stopover mapping" .-> STG
     FCT --> K1
     FCT --> K2
     FCT --> K3
