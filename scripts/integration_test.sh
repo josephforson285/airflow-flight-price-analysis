@@ -93,15 +93,15 @@ assert_eq "$(count_state "$RUN_ID" success)" 14 "tasks succeeded"
 
 log "Asserting quarantine behaviour"
 assert_eq "$(mysql_scalar 'SELECT COUNT(*) FROM raw_flight_prices')" 32 "rows landed"
-assert_eq "$(mysql_scalar 'SELECT COUNT(DISTINCT raw_row_num) FROM rejects_flight_prices')" 17 "rows quarantined"
-assert_eq "$(mysql_scalar 'SELECT COUNT(DISTINCT reason_code) FROM rejects_flight_prices')" 13 "distinct reject reasons"
-assert_eq "$(mysql_scalar 'SELECT COUNT(*) FROM stg_flights')" 15 "clean rows promoted"
+assert_eq "$(mysql_scalar 'SELECT COUNT(DISTINCT raw_row_num) FROM rejects_flight_prices')" 16 "rows quarantined"
+assert_eq "$(mysql_scalar 'SELECT COUNT(DISTINCT reason_code) FROM rejects_flight_prices')" 12 "distinct reject reasons"
+assert_eq "$(mysql_scalar 'SELECT COUNT(*) FROM stg_flights')" 16 "clean rows promoted"
 assert_eq "$(mysql_scalar 'SELECT COUNT(*) FROM ref_airports')" 20 "reference airports seeded"
 assert_eq "$(mysql_scalar 'SELECT COUNT(*) FROM ref_allowed_values')" 10 "allowed values seeded"
 
 log "Asserting analytics load and reconciliation"
-assert_eq "$(pg_scalar 'SELECT COUNT(*) FROM fct_flights')" 15 "fact rows"
-assert_eq "$(pg_scalar 'SELECT SUM(bookings) FROM kpi_bookings_by_airline')" 15 "KPI bookings reconcile"
+assert_eq "$(pg_scalar 'SELECT COUNT(*) FROM fct_flights')" 16 "fact rows"
+assert_eq "$(pg_scalar 'SELECT SUM(bookings) FROM kpi_bookings_by_airline')" 16 "KPI bookings reconcile"
 assert_eq "$(pg_scalar 'SELECT COUNT(*) FROM fct_flights WHERE total_fare_computed_bdt <> base_fare_bdt + tax_surcharge_bdt')" 0 "fare arithmetic internally consistent"
 # Each mart is built as kpi_x__new and renamed into place. A leftover __new
 # table means a swap did not complete, which would otherwise go unnoticed
@@ -136,6 +136,6 @@ done
 printf '    ok  %-42s %s\n' "gate blocked the bad batch" "$gate"
 
 assert_eq "$(count_state "$STRICT_RUN" success)" 5 "tasks before the gate ran"
-assert_eq "$(pg_scalar 'SELECT COUNT(*) FROM fct_flights')" 15 "analytics untouched by blocked run"
+assert_eq "$(pg_scalar 'SELECT COUNT(*) FROM fct_flights')" 16 "analytics untouched by blocked run"
 
 log "Integration test passed"

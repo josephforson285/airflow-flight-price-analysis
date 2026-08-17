@@ -50,7 +50,6 @@ class Validation:
 
 @dataclass(frozen=True)
 class BusinessRules:
-    max_fare_ratio: float
     regular_season_label: str
 
 
@@ -90,8 +89,6 @@ def get_config(config_path: str | None = None) -> Config:
         raise ValueError(f"reject_rate_threshold must be in [0, 1], got {threshold}")
     if tolerance < 0:
         raise ValueError(f"fare_tolerance_bdt must be >= 0, got {tolerance}")
-    if float(rules["max_fare_ratio"]) <= 1:
-        raise ValueError("max_fare_ratio must be greater than 1")
 
     return Config(
         connections=Connections(mysql=conns["mysql"], postgres=conns["postgres"]),
@@ -111,7 +108,6 @@ def get_config(config_path: str | None = None) -> Config:
             max_duration_hrs=float(val["max_duration_hrs"]),
         ),
         business_rules=BusinessRules(
-            max_fare_ratio=float(rules["max_fare_ratio"]),
             regular_season_label=rules["regular_season_label"],
         ),
         ingest_batch_size=int(raw.get("ingest", {})["batch_size"]),

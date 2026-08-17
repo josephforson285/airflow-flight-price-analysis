@@ -318,7 +318,7 @@ make clean && make up     # wipes volumes, ~1 min, then re-trigger
 
 ```
 57,000 rows · 17 columns · 14 MB · 24 airlines · 152 routes
-14 tasks · ~14 seconds · 13 validation rules
+14 tasks · ~14 seconds · 12 validation rules
 2,522 markup rows (4.42%) · Hajj +42.7% · Regular baseline 68,077 BDT
 41 tests · 32 of them without Airflow in 0.03s
 ```

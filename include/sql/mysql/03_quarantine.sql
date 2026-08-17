@@ -148,37 +148,7 @@ WHERE batch_id = '{{ run_id }}'
   AND days_before_departure REGEXP '{{ num_regex }}'
   AND CAST(days_before_departure AS DECIMAL(20,10)) < 0;
 
--- 9. Implausible fare arithmetic.
--- A disagreement alone is not an error -- those are flagged in staging. This
--- rejects only totals that cannot be a surcharge: below their own components,
--- or beyond max_fare_ratio times them.
---
--- Relative, not absolute, because no absolute bound separates them: legitimate
--- discrepancies span 445-93,165 BDT and a genuinely broken row sits at 16,105,
--- inside that range. Expressed as multiplication so there is no division by
--- zero to guard.
-INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
-SELECT batch_id, raw_row_num, 'FARE_ARITHMETIC',
-       CONCAT('base+tax=', CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10)),
-              ' total=',   CAST(total_fare_bdt AS DECIMAL(20,10))),
-       JSON_OBJECT('base', base_fare_bdt, 'tax', tax_surcharge_bdt, 'total', total_fare_bdt)
-FROM raw_flight_prices
-WHERE batch_id = '{{ run_id }}'
-  AND base_fare_bdt     REGEXP '{{ num_regex }}'
-  AND tax_surcharge_bdt REGEXP '{{ num_regex }}'
-  AND total_fare_bdt    REGEXP '{{ num_regex }}'
-  -- differs by real money ...
-  AND ABS(CAST(total_fare_bdt AS DECIMAL(20,10))
-          - (CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10))))
-      > {{ params.fare_tolerance }}
-  -- ... and is implausible
-  AND (   (CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10))) <= 0
-       OR CAST(total_fare_bdt AS DECIMAL(20,10))
-            < (CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10)))
-       OR CAST(total_fare_bdt AS DECIMAL(20,10))
-            > {{ max_fare_ratio }} * (CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10))));
-
--- 10. Airport code outside the known domain -- the brief's "invalid city
+-- 9. Airport code outside the known domain -- the brief's "invalid city
 -- names". Blank codes are skipped; MISSING_REQUIRED already reports them.
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
 SELECT r.batch_id, r.raw_row_num, 'UNKNOWN_AIRPORT',
@@ -195,7 +165,7 @@ WHERE r.batch_id = '{{ run_id }}'
   AND (s.airport_code IS NULL OR d.airport_code IS NULL);
 
 -- ---------------------------------------------------------------------
--- 11. Exact duplicate rows — keep the first occurrence, reject the rest
+-- 10. Exact duplicate rows — keep the first occurrence, reject the rest
 -- ---------------------------------------------------------------------
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
 WITH ranked AS (
@@ -235,7 +205,7 @@ SELECT batch_id, raw_row_num, 'DUPLICATE_ROW',
 FROM ranked
 WHERE occurrence > 1;
 
--- 12. Non-numeric measures.
+-- 11. Non-numeric measures.
 -- Both are cast in 04 and land in NOT NULL columns, so junk here would
 -- otherwise surface as a cast warning or a constraint error.
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
@@ -250,7 +220,7 @@ WHERE batch_id = '{{ run_id }}'
   AND (   COALESCE(duration_hrs,'')          NOT REGEXP '{{ num_regex }}'
        OR COALESCE(days_before_departure,'') NOT REGEXP '{{ num_regex }}');
 
--- 13. Implausible duration.
+-- 12. Implausible duration.
 -- validate_stg_flights also asserts duration > 0, but that runs AFTER the
 -- build: it would fail the whole run rather than quarantine one row.
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)

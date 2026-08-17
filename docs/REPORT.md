@@ -31,7 +31,7 @@ the boundary between them is where a specific class of failure is caught.
                     ▼
    MySQL   raw_flight_prices                     landing zone, every column VARCHAR
                     │
-                    │  ② VALIDATE — 13 rules
+                    │  ② VALIDATE — 12 rules
                     ├──────────────────────────► rejects_flight_prices
                     │                            one row per (source row, rule broken)
                     │  ③ CAST + DERIVE
@@ -244,7 +244,6 @@ something, and it is the DAG's only leaf.
 | `SELF_ROUTE` | Source equals destination |
 | `UNKNOWN_CATEGORY` | Class, stopovers or seasonality outside the profiled domain |
 | `NEGATIVE_LEAD_TIME` | Negative `days_before_departure` |
-| `FARE_ARITHMETIC` | `base + tax ≠ total`, *excluding* the known ×1.2 pattern |
 | `UNKNOWN_AIRPORT` | Airport code absent from `ref_airports` — the brief's "invalid city names" |
 | `DUPLICATE_ROW` | Exact duplicate across **all 17** source columns; first occurrence kept |
 | `NON_NUMERIC_MEASURE` | `duration_hrs` or `days_before_departure` not a number |
@@ -771,7 +770,7 @@ outcome                    assert_reject_rate FAILED, pipeline halted
                            before publishing anything
 ```
 
-Reject breakdown across all 13 rules: `MISSING_REQUIRED` 4,
+Reject breakdown across all 12 rules: `MISSING_REQUIRED` 4,
 `FARE_ARITHMETIC` 2, `NON_NUMERIC_FARE` 2, `NON_NUMERIC_MEASURE` 2, and one
 each of `ARRIVAL_BEFORE_DEPARTURE`, `DUPLICATE_ROW`, `IMPLAUSIBLE_DURATION`,
 `NEGATIVE_FARE`, `NEGATIVE_LEAD_TIME`, `SELF_ROUTE`, `UNKNOWN_AIRPORT`,

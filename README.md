@@ -69,7 +69,7 @@ flowchart TD
     end
 
     CSV -->|"ingest · RFC 4180 · no casting"| RAW
-    RAW -->|"13 validation rules"| REJ
+    RAW -->|"12 validation rules"| REJ
     RAW -->|"cast · derive · exclude rejects"| STG
     STG -->|"COPY FROM STDIN"| FCT
 
