@@ -72,17 +72,28 @@ def transaction(connect: Connect) -> Iterator:
 
 
 @contextmanager
-def read_cursor(connect: Connect) -> Iterator:
+def read_cursor(connect: Connect, cursor_factory=None) -> Iterator:
     """Yield a cursor for read-only work, always closing it.
 
     No commit: nothing was written. Kept separate from transaction() so a
     reader cannot accidentally commit and so the intent is visible at the
     call site.
+
+    cursor_factory exists for streaming. MySQLdb's default cursor is
+    CLIENT-SIDE buffered: it pulls the entire result set into the client during
+    execute(), so a fetchmany() loop over it iterates memory that is already
+    fully allocated. Measured on this pipeline, `cursor.rowcount` returned
+    57,000 immediately after execute() and before a single fetch — proof the
+    rows were already here. Passing a server-side cursor class makes the
+    chunked read genuinely chunked.
+
+    The parameter is a factory rather than a hard-coded class so this module
+    stays driver-agnostic and importable without MySQLdb installed.
     """
     conn = connect()
     cursor = None
     try:
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory) if cursor_factory else conn.cursor()
         yield cursor
     finally:
         if cursor is not None:

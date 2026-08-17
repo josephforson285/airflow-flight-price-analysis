@@ -194,10 +194,16 @@ def flight_price_pipeline():
     # -----------------------------------------------------------------
     @task
     def transfer_to_postgres() -> dict:
+        # SSCursor is a SERVER-side cursor. MySQLdb's default buffers the whole
+        # result set client-side during execute(), which made the chunked read
+        # a walk over memory that was already fully allocated.
+        from MySQLdb.cursors import SSCursor
+
         moved = transfer.copy_staging_to_fact(
             mysql_connect=mysql_connect,
             postgres_connect=postgres_connect,
             batch_size=CONFIG.ingest_batch_size,
+            mysql_cursor_factory=SSCursor,
         )
         return {"rows_transferred": moved}
 
