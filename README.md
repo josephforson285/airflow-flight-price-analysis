@@ -27,10 +27,23 @@ Airflow UI → <http://localhost:8080> (default login `airflow` / `airflow`).
 make logs S=airflow-scheduler   # tail one service
 make mysql                      # shell into staging DB
 make psql                       # shell into analytics DB
+make q  SQL="SELECT ..."        # one-off query on analytics
+make qm SQL="SELECT ..."        # one-off query on staging
 make test                       # run the test suite
+make integration                # end-to-end run + assertions
 make down                       # stop, keep data
 make clean                      # stop and WIPE all data volumes
 ```
+
+Every row carries a `batch_id` — the Airflow `run_id`, copied verbatim — so a
+run's output is traceable end to end across both databases:
+
+```bash
+make q SQL="SELECT batch_id, COUNT(*) FROM fct_flights GROUP BY batch_id"
+```
+
+Only one batch is present at a time: every layer is a full refresh, so
+`batch_id` records *which run produced a row* rather than partitioning history.
 
 ---
 

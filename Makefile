@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 COMPOSE := docker compose
 
-.PHONY: help init build up down restart ps logs mysql psql test integration lint dag-test clean nuke
+.PHONY: help init build up down restart ps logs mysql psql q qm test integration lint dag-test clean nuke
 
 help:  ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -42,6 +42,12 @@ mysql:  ## Open a MySQL shell on the staging database
 
 psql:  ## Open a psql shell on the analytics database
 	$(COMPOSE) exec postgres-analytics sh -c 'exec psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
+
+q:  ## One-off query on analytics: make q SQL="SELECT COUNT(*) FROM fct_flights"
+	@$(COMPOSE) exec -T postgres-analytics sh -c 'exec psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c "$(SQL)"'
+
+qm:  ## One-off query on staging: make qm SQL="SELECT COUNT(*) FROM stg_flights"
+	@$(COMPOSE) exec -T mysql-staging sh -c 'exec mysql -t -u"$$MYSQL_USER" -p"$$MYSQL_PASSWORD" "$$MYSQL_DATABASE" -e "$(SQL)"' 2>/dev/null
 
 test:  ## Run the test suite inside the Airflow image
 	$(COMPOSE) run --rm --no-deps airflow-cli bash -c 'cd /opt/airflow && python -m pytest tests -q'
