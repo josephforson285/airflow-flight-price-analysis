@@ -1,33 +1,16 @@
--- Quarantine pass. Reads the raw landing table, writes one row per
--- (source row, rule violated) into rejects_flight_prices.
+-- Quarantine pass: one reject row per (source row, rule broken), so a row
+-- breaking several rules reports all of them.
 --
--- One row PER REASON, deliberately: a row with a null destination AND a
--- negative fare produces two rejects. Recording only the first violation
--- hit would hide the second one from whoever has to fix the source.
---
--- Nothing is deleted here. Quarantine marks; the staging build (04) is what
--- excludes. Keeping those separate means you can inspect exactly what would
--- be dropped before anything is.
+-- Marks only -- 04 does the excluding. Separating them means you can see
+-- what would be dropped before anything is.
 
--- Re-runnable: clear previous verdicts before re-deciding. Full refresh —
--- the source is one static extract, so each run rebuilds every layer. This
--- is what makes the task safe to clear and re-run: counts come out identical
--- rather than doubling, which a bare INSERT would do silently.
+-- Full refresh: clear before re-deciding, so the task is safe to re-run.
 DELETE FROM rejects_flight_prices;
 
--- ---------------------------------------------------------------------
--- 1. Required fields missing / blank
---
--- Covers EVERY column that is NOT NULL in stg_flights, not just the six the
--- brief names. The earlier version checked seven; staging declares twenty-odd
--- NOT NULL. A blank aircraft_type or booking_source therefore passed
--- quarantine and then blew up on the INSERT into stg_flights with a driver
--- constraint error naming no row — exactly the opaque failure the landing
--- zone exists to prevent.
---
--- The blank list is computed once in a derived table and reused as the
--- filter, rather than restating seventeen conditions in the WHERE clause.
--- ---------------------------------------------------------------------
+-- 1. Required fields missing / blank.
+-- Covers every column NOT NULL in stg_flights: a blank aircraft_type would
+-- otherwise pass here and fail the staging INSERT on a constraint error.
+-- The blank list is computed once and reused as the filter.
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
 SELECT batch_id, raw_row_num, reason_code, blanks, payload
 FROM (
@@ -91,20 +74,11 @@ WHERE batch_id = '{{ run_id }}'
        OR CAST(tax_surcharge_bdt AS DECIMAL(20,10)) < 0
        OR CAST(total_fare_bdt    AS DECIMAL(20,10)) < 0);
 
--- ---------------------------------------------------------------------
--- 4. Unparseable timestamps
---
--- Every STR_TO_DATE call in this file is wrapped in a format regex first.
--- Under MySQL 8's default strict sql_mode, STR_TO_DATE does NOT return NULL
--- for junk input — it raises error 1411 and aborts the statement. So the
--- naive `STR_TO_DATE(col, fmt) IS NULL` test cannot detect a bad date; it
--- dies on one. Feeding it NULL (via the IF guard) is safe and does return
--- NULL, which is what we can actually test.
---
--- Relying on evaluation order to protect a later STR_TO_DATE would be a bug
--- waiting to happen: SQL makes no promise that a WHERE predicate is applied
--- before a projection, so the guard travels with every call site.
--- ---------------------------------------------------------------------
+-- 4. Unparseable timestamps.
+-- STR_TO_DATE is regex-guarded at EVERY call site: under MySQL 8 strict
+-- sql_mode it raises error 1411 on junk instead of returning NULL, so the
+-- naive IS NULL test dies on the input it exists to detect. SQL does not
+-- promise WHERE runs before the projection, so the guard cannot be hoisted.
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
 SELECT batch_id, raw_row_num, 'UNPARSEABLE_DATE',
        CONCAT('departure=', COALESCE(departure_datetime,'<null>'),
@@ -141,15 +115,9 @@ WHERE batch_id = '{{ run_id }}'
   AND TRIM(COALESCE(source_code,'')) <> ''
   AND UPPER(TRIM(source_code)) = UPPER(TRIM(destination_code));
 
--- ---------------------------------------------------------------------
--- 7. Category not in the known domain.
---
--- Membership in ref_allowed_values, not literals in this file. The domains
--- were previously hardcoded here as NOT IN (...) lists, written out twice
--- each, which contradicted the argument made for airports one rule below:
--- validity is data, so correcting it should be an UPDATE rather than a code
--- change and a redeploy.
--- ---------------------------------------------------------------------
+-- 7. Category outside the known domain.
+-- Membership in ref_allowed_values, not literals here, so correcting a
+-- domain is an UPDATE rather than a code change.
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
 SELECT r.batch_id, r.raw_row_num, 'UNKNOWN_CATEGORY',
        CONCAT_WS(',',
@@ -180,17 +148,10 @@ WHERE batch_id = '{{ run_id }}'
   AND days_before_departure REGEXP '{{ num_regex }}'
   AND CAST(days_before_departure AS DECIMAL(20,10)) < 0;
 
--- ---------------------------------------------------------------------
 -- 9. Fare arithmetic violation.
---
--- THIS IS THE SUBTLE ONE. Profiling found 2,522 rows (4.42%) where
--- total = (base + tax) * 1.2 EXACTLY — min, median and max discrepancy all
--- 16.6667%, zero rows under. That is a deterministic rule, not corruption,
--- so it is FLAGGED in staging rather than rejected. Rejecting it would
--- discard 4.42% of a clean dataset over a pattern we do not understand.
---
--- Only arithmetic that is broken in some OTHER way lands here.
--- ---------------------------------------------------------------------
+-- Excludes the known x1.2 markup (4.42% of rows, deterministic) -- that is
+-- flagged in staging, not rejected. Only arithmetic broken some other way
+-- lands here.
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
 SELECT batch_id, raw_row_num, 'FARE_ARITHMETIC',
        CONCAT('base+tax=', CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10)),
@@ -210,14 +171,8 @@ WHERE batch_id = '{{ run_id }}'
           - {{ markup_factor }} * (CAST(base_fare_bdt AS DECIMAL(20,10)) + CAST(tax_surcharge_bdt AS DECIMAL(20,10))))
       > {{ params.fare_tolerance }};
 
--- ---------------------------------------------------------------------
--- 10. Airport code not in the known domain — the brief's "invalid city
---     names". Membership in ref_airports, not a pattern match: a code can
---     be perfectly well-formed ("XXX") and still not be a real airport.
---
---     Rows with a blank code are skipped here because MISSING_REQUIRED has
---     already reported them; flagging both adds noise without information.
--- ---------------------------------------------------------------------
+-- 10. Airport code outside the known domain -- the brief's "invalid city
+-- names". Blank codes are skipped; MISSING_REQUIRED already reports them.
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
 SELECT r.batch_id, r.raw_row_num, 'UNKNOWN_AIRPORT',
        CONCAT_WS(',',
@@ -239,20 +194,11 @@ INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_de
 WITH ranked AS (
     SELECT batch_id, raw_row_num,
            ROW_NUMBER() OVER (
-               -- ALL 17 source columns. The fingerprint previously covered
-               -- 12, omitting source_name, destination_name, duration_hrs,
-               -- stopovers and aircraft_type -- so two rows differing only in,
-               -- say, aircraft type hashed identically and the second was
-               -- quarantined as an "identical row" it was not. The rule was
-               -- called DUPLICATE_ROW and reported "occurrence #N of an
-               -- identical row" while actually testing a partial business key.
-               --
-               -- Separator is CHAR(31) (ASCII unit separator), not ''. With an
-               -- empty separator the fingerprint is ambiguous: airline 'US'
-               -- plus source 'BD' concatenates to the same string as 'USB'
-               -- plus 'D', so different rows could collide. CHAR(30) stands in
-               -- for NULL for the same reason -- a literal '~' in the data
-               -- could otherwise impersonate a null.
+               -- All 17 source columns: fewer makes this a business-key match,
+               -- not the exact-duplicate check its name claims.
+               -- CHAR(31) separator and CHAR(30) null marker so field
+               -- boundaries cannot be forged by data: with no separator
+               -- 'US'+'BD' would collide with 'USB'+'D'.
                PARTITION BY MD5(CONCAT_WS(CHAR(31),
                    COALESCE(airline,                 CHAR(30)),
                    COALESCE(source_code,             CHAR(30)),
@@ -282,15 +228,9 @@ SELECT batch_id, raw_row_num, 'DUPLICATE_ROW',
 FROM ranked
 WHERE occurrence > 1;
 
--- ---------------------------------------------------------------------
 -- 12. Non-numeric measures.
---
--- duration_hrs had NO validation at all, and days_before_departure was only
--- checked for being negative — a check that silently skipped any value that
--- was not a number in the first place. Both are cast in the staging build and
--- both land in NOT NULL columns, so junk here produced a cast warning or a
--- constraint error at INSERT time rather than an inspectable reject.
--- ---------------------------------------------------------------------
+-- Both are cast in 04 and land in NOT NULL columns, so junk here would
+-- otherwise surface as a cast warning or a constraint error.
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
 SELECT batch_id, raw_row_num, 'NON_NUMERIC_MEASURE',
        CONCAT_WS(',',
@@ -303,17 +243,9 @@ WHERE batch_id = '{{ run_id }}'
   AND (   COALESCE(duration_hrs,'')          NOT REGEXP '{{ num_regex }}'
        OR COALESCE(days_before_departure,'') NOT REGEXP '{{ num_regex }}');
 
--- ---------------------------------------------------------------------
 -- 13. Implausible duration.
---
--- A flight cannot take zero or negative time, and a value beyond the
--- configured bound is far more likely a unit error (minutes recorded as
--- hours) than a real itinerary. Profiled range is 0.5–15.83 hours.
---
--- validate_stg_flights already asserts duration_hrs > 0, but that runs AFTER
--- the staging build: it would fail the run rather than quarantine the row,
--- which is the wrong response to one bad record among 57,000.
--- ---------------------------------------------------------------------
+-- validate_stg_flights also asserts duration > 0, but that runs AFTER the
+-- build: it would fail the whole run rather than quarantine one row.
 INSERT INTO rejects_flight_prices (batch_id, raw_row_num, reason_code, reason_detail, payload)
 SELECT batch_id, raw_row_num, 'IMPLAUSIBLE_DURATION',
        CONCAT('duration_hrs=', duration_hrs,

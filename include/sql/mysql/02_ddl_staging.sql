@@ -1,11 +1,7 @@
 -- Cleaned, typed staging + the quarantine table.
 
--- ---------------------------------------------------------------------
--- Rejects. A row may violate several rules, so this is one row PER
--- (row, reason) — all reasons are captured, not just the first one hit.
--- payload keeps the original values so a reject is diagnosable without
--- going back to the CSV.
--- ---------------------------------------------------------------------
+-- Rejects: one row per (source row, reason), so all violations are recorded.
+-- payload keeps the original values so a reject is diagnosable without the CSV.
 CREATE TABLE IF NOT EXISTS rejects_flight_prices (
     reject_id     BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     batch_id      VARCHAR(64)  NOT NULL,
@@ -20,17 +16,12 @@ CREATE TABLE IF NOT EXISTS rejects_flight_prices (
     KEY idx_rejects_row   (batch_id, raw_row_num)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ---------------------------------------------------------------------
--- Staging. Money is DECIMAL(12,2) — never FLOAT. The source stores fares
--- as 15-decimal floats (21131.22502141266); binary floating point cannot
--- represent decimal currency exactly, so sums drift. This is a
--- correctness bug, not a formatting preference.
+-- Staging. Money is DECIMAL(12,2), never FLOAT -- binary floating point
+-- cannot represent decimal currency exactly, so sums drift.
 --
--- The fare columns encode the central finding of the profiling: 4.42% of
--- rows carry total = (base + tax) * 1.2 exactly. We cannot tell from the
--- data whether that is corruption or an unstated surcharge rule, so we
--- refuse to silently pick — both numbers are kept and the row is flagged.
--- ---------------------------------------------------------------------
+-- The fare columns keep both values for the x1.2 markup rows: whether that
+-- is dirty data or an unstated rule cannot be settled from the data, so the
+-- pipeline flags rather than picks.
 CREATE TABLE IF NOT EXISTS stg_flights (
     batch_id                VARCHAR(64)  NOT NULL,
     raw_row_num             INT UNSIGNED NOT NULL,

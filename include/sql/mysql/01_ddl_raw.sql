@@ -1,13 +1,9 @@
--- Landing zone. Every column is VARCHAR on purpose.
+-- Landing zone. Every column is VARCHAR on purpose: a malformed value must be
+-- able to land so it fails a validation we wrote, on a row we can inspect,
+-- rather than aborting the load with a driver error naming no row.
 --
--- A malformed value ("N/A" in a fare, "not-a-timestamp" in a date) must be
--- able to LAND. If we typed these columns, a single bad cell would abort the
--- whole load with a driver-level error and no indication of which row did it.
--- Typed here = opaque failure. Typed later = a row we can look at.
---
--- Column names are snake_cased at this boundary because the source names
--- ("Tax & Surcharge (BDT)") are hostile to SQL. `class` becomes travel_class
--- to dodge the reserved-word question entirely.
+-- Source names are snake_cased here ('Tax & Surcharge (BDT)' is hostile as an
+-- identifier); `class` becomes travel_class to dodge the reserved word.
 
 CREATE TABLE IF NOT EXISTS raw_flight_prices (
     batch_id              VARCHAR(64)  NOT NULL,

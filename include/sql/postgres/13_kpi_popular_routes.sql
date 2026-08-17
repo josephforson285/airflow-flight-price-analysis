@@ -1,16 +1,10 @@
--- KPI 4 — Most popular routes.
+-- KPI 4 -- Most popular routes.
 --
--- Every route is stored WITH its rank rather than storing only a top-N slice.
--- A pipeline that silently truncates to 10 rows reads, six months later, as
--- if the world only contains 10 routes. Ranking is cheap; "top 5" is then a
--- WHERE clause on the consumer's side:
---     SELECT * FROM kpi_popular_routes WHERE rank_position <= 5;
+-- Every route stored WITH its rank, not a top-N slice: a table truncated to
+-- 10 reads later as though the world contains 10 routes. "Top 5" is the
+-- consumer's WHERE clause. Ties break on route code so re-runs are stable.
 --
--- Ties break on route code so the ranking is deterministic across runs —
--- otherwise re-running the DAG shuffles equal-count routes and the table
--- appears to change when nothing did.
---
--- Built via atomic swap — see 10_kpi_fare_by_airline.sql for why.
+-- Atomic swap -- see 10_kpi_fare_by_airline.sql.
 
 DROP TABLE IF EXISTS kpi_popular_routes__new;
 

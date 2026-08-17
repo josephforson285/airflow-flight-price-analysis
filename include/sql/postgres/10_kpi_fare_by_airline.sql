@@ -1,19 +1,12 @@
--- KPI 1 — Average fare by airline.
+-- KPI 1 -- Average fare by airline.
 --
--- Uses total_fare_REPORTED, not the recomputed value: the reported total is
--- what the passenger actually paid, so it is the honest basis for a price
--- KPI. markup_row_count carries the caveat alongside the number instead of
--- burying it — a reader can see how much of each airline's mean is affected
--- by the unexplained x1.2 rows.
+-- Uses total_fare_REPORTED: that is what the passenger paid, so it is the
+-- honest basis for a price KPI. markup_row_count keeps the caveat beside the
+-- number instead of burying it.
 --
--- ATOMIC SWAP. Build into a fresh table, then replace the live one. PostgreSQL
--- has transactional DDL and this file runs as a single transaction, so:
---   * readers see the previous mart right up until the commit — no window
---     where the table is missing or empty;
---   * a failure at any point rolls the whole thing back, leaving the previous
---     good data in place;
---   * the schema comes from this file every run, so it cannot drift from what
---     is checked in the way CREATE TABLE IF NOT EXISTS silently allowed.
+-- Atomic swap: build into __new, then replace in one transaction. Postgres
+-- has transactional DDL, so readers see the old mart until commit, a failure
+-- rolls the whole rebuild back, and the schema comes from this file each run.
 
 DROP TABLE IF EXISTS kpi_fare_by_airline__new;
 

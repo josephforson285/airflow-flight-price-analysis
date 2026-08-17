@@ -28,10 +28,8 @@ from airflow.sdk import Param, dag, task
 from flight_pipeline import checks, ingest, transfer
 from flight_pipeline.config import get_config
 
-# Everything tunable comes from include/config/pipeline.yml. Nothing in this file is a
-# magic number, and no path is hardcoded to /opt/airflow — the config module
-# resolves them from the project root, so the same code runs in the container,
-# in CI and in a bare checkout.
+# Everything tunable comes from include/config/pipeline.yml. No magic numbers
+# here, and no path hardcoded to /opt/airflow.
 CONFIG = get_config()
 
 MYSQL_CONN_ID = CONFIG.connections.mysql
@@ -58,13 +56,9 @@ def postgres_connect():
         "retries": 2,
         "retry_exponential_backoff": True,
     },
-    # Constants the SQL needs but which are NOT per-run tunable. Macros rather
-    # than params, because params are the trigger-time override surface and
-    # putting a regex there invites someone to edit it in the UI.
-    #
-    # dt_regex in particular was previously copy-pasted at eight call sites
-    # across two files. A typo in one copy would have silently disabled that
-    # one date check while every test still passed.
+    # Constants the SQL needs but which are not per-run tunable. Macros rather
+    # than params: params are the trigger-time override surface, and a regex
+    # does not belong in a UI text box.
     user_defined_macros={
         "dt_regex": CONFIG.validation.datetime_regex,
         "dt_format": CONFIG.validation.datetime_format,
@@ -74,9 +68,8 @@ def postgres_connect():
         "regular_season": CONFIG.business_rules.regular_season_label,
     },
     params={
-        # The trigger-time override surface. source_csv_path is what lets the
-        # same DAG run against the corrupted fixture with no code change:
-        #   {"source_csv_path": ".../fixtures/corrupted_sample.csv"}
+        # Trigger-time overrides. source_csv_path is what lets the same DAG run
+        # against the corrupted fixture with no code change.
         "source_csv_path": Param(str(CONFIG.paths.source_csv), type="string"),
         "fare_tolerance": Param(
             CONFIG.validation.fare_tolerance_bdt, type="number", minimum=0
@@ -194,9 +187,9 @@ def flight_price_pipeline():
     # -----------------------------------------------------------------
     @task
     def transfer_to_postgres() -> dict:
-        # SSCursor is a SERVER-side cursor. MySQLdb's default buffers the whole
-        # result set client-side during execute(), which made the chunked read
-        # a walk over memory that was already fully allocated.
+        # SSCursor is server-side. MySQLdb's default buffers the entire result
+        # set client-side, which would make the chunked read a walk over memory
+        # that is already fully allocated.
         from MySQLdb.cursors import SSCursor
 
         moved = transfer.copy_staging_to_fact(

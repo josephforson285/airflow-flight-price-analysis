@@ -1,15 +1,9 @@
--- KPI 2 — Seasonal fare variation (peak vs non-peak).
+-- KPI 2 -- Seasonal fare variation (peak vs non-peak).
 --
--- The brief asks for "Eid, Winter holidays" style peak comparison and warns
--- this needs a holiday calendar. It does not: profiling showed the source
--- ships a Seasonality column with exactly four values —
--- Regular (44,525) / Winter Holidays (10,930) / Hajj (942) / Eid (603).
--- Peak is simply everything that is not 'Regular'.
+-- No holiday calendar needed: the source ships Seasonality with four values,
+-- so peak is everything that is not 'Regular'.
 --
--- vs_regular_pct expresses each season's mean fare as a premium over the
--- Regular baseline, which is the number a pricing analyst actually wants.
---
--- Built via atomic swap — see 10_kpi_fare_by_airline.sql for why.
+-- Atomic swap -- see 10_kpi_fare_by_airline.sql.
 
 DROP TABLE IF EXISTS kpi_seasonal_variation__new;
 
