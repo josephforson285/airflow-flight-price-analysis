@@ -1,14 +1,11 @@
 # ---- data ----
-# Three kinds of thing live under include/data/, and the directory name is
-# what tells you which is which:
-#   raw/        bulk source extracts        -> never committed
-#   reference/  small curated lookup data   -> committed, read by every run
-#   fixtures/   deliberately broken input   -> committed, test material only
+# The directory name says whether a file is tracked:
+#   raw/        bulk source extracts       -- ignored
+#   reference/  curated lookup data        -- tracked, read by every run
+#   fixtures/   deliberately broken input  -- tracked, test material
 #
-# NOTE ordering + the '**' form are both load-bearing. Excluding the
-# DIRECTORY (`include/data/`) makes git skip it entirely, so no later
-# '!' rule inside it can ever take effect. We exclude the CONTENTS
-# instead, then re-admit the tracked subdirectories, in that order.
+# Order and the '**' form are load-bearing: excluding the DIRECTORY makes git
+# skip it entirely, so no later '!' rule inside it can take effect.
 *.parquet
 *.xlsx
 *.csv
@@ -35,8 +32,6 @@ standalone_admin_password.txt
 config/airflow.cfg
 
 # ---- python ----
-# The editable install writes egg-info into the source tree, and the mount
-# means it lands in ./src on the host too.
 *.egg-info/
 build/
 dist/

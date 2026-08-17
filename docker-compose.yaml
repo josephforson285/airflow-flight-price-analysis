@@ -1,20 +1,11 @@
-# Flight Price Analysis — local stack
+# Adapted from the official Airflow 3.3.1 compose file: LocalExecutor instead
+# of Celery (drops redis, worker and flower), plus the two project databases,
+# built from ./Dockerfile rather than _PIP_ADDITIONAL_REQUIREMENTS.
 #
-# Adapted from the official Airflow 3.3.1 compose file, with three changes:
-#   1. CeleryExecutor -> LocalExecutor. Drops redis, airflow-worker and
-#      flower (3 fewer containers, several GB less RAM). Task parallelism
-#      is unaffected; Celery only earns its keep across multiple machines.
-#   2. Adds the two project databases: mysql-staging + postgres-analytics.
-#   3. Builds from ./Dockerfile instead of using _PIP_ADDITIONAL_REQUIREMENTS,
-#      which re-downloads packages on every container start.
-#
-# THREE databases live here — do not confuse them:
-#   airflow-meta        Airflow's own bookkeeping. Never put pipeline data here.
-#   mysql-staging       Raw landing + cleaned staging  (host port 3307)
-#   postgres-analytics  Facts + KPI marts              (host port 5433)
-#
-# Host ports are deliberately non-standard: this machine already runs a
-# local MySQL on 3306 and a local PostgreSQL on 5432.
+# Three databases, do not confuse them:
+#   airflow-meta        Airflow's own bookkeeping -- never pipeline data
+#   mysql-staging       landing + staging   (host 3307)
+#   postgres-analytics  facts + KPI marts   (host 5433)
 ---
 x-airflow-common: &airflow-common
   build:
@@ -29,18 +20,15 @@ x-airflow-common: &airflow-common
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-meta/airflow
     AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-    # Off by default in the official file this is 'true' — the ~50 bundled
-    # example DAGs bury your own DAG in the UI and slow the dag-processor.
+    # Official file ships 'true'; the ~50 example DAGs bury your own.
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET}
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
 
-    # Connections declared as env vars rather than clicked into the UI.
-    # This is the whole point: the stack is reproducible from source, and
-    # a fresh `docker compose up` needs zero manual setup. Airflow reads
-    # any AIRFLOW_CONN_<CONN_ID> variable as a connection URI.
+    # Declared here, not clicked into the UI, so a fresh `docker compose up`
+    # needs no manual setup.
     AIRFLOW_CONN_MYSQL_STAGING: >-
       mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql-staging:3306/${MYSQL_DATABASE}
     AIRFLOW_CONN_POSTGRES_ANALYTICS: >-
@@ -52,8 +40,7 @@ x-airflow-common: &airflow-common
     - ./plugins:/opt/airflow/plugins
     - ./include:/opt/airflow/include
     - ./tests:/opt/airflow/tests
-    # The package is pip-installed editable at this exact path in the image,
-    # so mounting over it keeps edits live without a rebuild.
+    # Editable install points here, so mounting keeps edits live.
     - ./src:/opt/airflow/src
     - ./pyproject.toml:/opt/airflow/pyproject.toml:ro
   user: "${AIRFLOW_UID:-50000}:0"
@@ -62,9 +49,7 @@ x-airflow-common: &airflow-common
       condition: service_healthy
 
 services:
-  # ---------------------------------------------------------------
-  # Airflow's own metadata database. Internal only — no host port.
-  # ---------------------------------------------------------------
+  # Airflow's own metadata database. Internal only.
   airflow-meta:
     image: postgres:16
     environment:
@@ -80,9 +65,7 @@ services:
       start_period: 5s
     restart: always
 
-  # ---------------------------------------------------------------
-  # Staging database — raw landing zone + typed/clean staging tables
-  # ---------------------------------------------------------------
+  # Staging: raw landing zone + typed staging tables.
   mysql-staging:
     image: mysql:8.4
     environment:
@@ -102,9 +85,7 @@ services:
       start_period: 30s
     restart: always
 
-  # ---------------------------------------------------------------
-  # Analytics database — fact table + KPI marts
-  # ---------------------------------------------------------------
+  # Analytics: fact table + KPI marts.
   postgres-analytics:
     image: postgres:16
     environment:
@@ -123,9 +104,7 @@ services:
       start_period: 10s
     restart: always
 
-  # ---------------------------------------------------------------
-  # Airflow components
-  # ---------------------------------------------------------------
+  # Airflow components.
   airflow-apiserver:
     <<: *airflow-common
     command: api-server
@@ -188,8 +167,7 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-  # Runs once: migrates the metadata DB and creates the admin user.
-  # Runs as root because it chowns the mounted volumes.
+  # Runs once: migrates the metadata DB, creates the admin user, chowns mounts.
   airflow-init:
     <<: *airflow-common
     entrypoint: /bin/bash

@@ -91,9 +91,11 @@ jobs:
       - name: Create .env
         run: make init
 
+      # Matches assignments only: a comment mentioning REPLACE_ME is not a
+      # placeholder secret, and the looser grep failed on exactly that.
       - name: Verify no placeholder secrets survived
         run: |
-          if grep -q "REPLACE_ME" .env; then
+          if grep -qE '^[A-Z_]+=REPLACE_ME' .env; then
             echo "make init left placeholder secrets in .env"; exit 1
           fi
 

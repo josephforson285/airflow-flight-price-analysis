@@ -1,14 +1,8 @@
-# Versions are intentionally unpinned here — the Airflow constraints file
-# referenced in the Dockerfile pins them, and duplicating pins in two places
-# is how you get unresolvable conflicts.
+# Unpinned on purpose: the Airflow constraints file in the Dockerfile pins
+# these, and pinning in two places is how you get unresolvable conflicts.
 
-# Database providers: hooks + connection management for the two project DBs
 apache-airflow-providers-mysql
 apache-airflow-providers-postgres
-
-# SQLExecuteQueryOperator, plus the declarative data-quality check operators
-# (SQLColumnCheckOperator / SQLTableCheckOperator) used by the validation tasks
 apache-airflow-providers-common-sql
 
-# Test suite (DAG-integrity tests + unit tests on the transform helpers)
 pytest
