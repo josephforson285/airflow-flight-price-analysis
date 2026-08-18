@@ -57,7 +57,7 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
+      POSTGRES_PASSWORD: airflowxxx #change with proper creds...
       POSTGRES_DB: airflow
     volumes:
       - airflow-meta-data:/var/lib/postgresql/data
