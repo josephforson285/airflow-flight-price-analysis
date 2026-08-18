@@ -67,68 +67,23 @@ pipelines break, so it is worth practising deliberately.
 
 ### 1.3 Execution flow
 
-```mermaid
-flowchart TD
-    DDL1["create_staging_tables<br><i>MySQL DDL</i>"]
-    DDL2["create_analytics_tables<br><i>PostgreSQL DDL</i>"]
-    ING["ingest_csv_to_mysql"]
-    SEED["seed_reference_data"]
-    QUA["quarantine_invalid_rows"]
-    GATE{{"assert_reject_rate<br>GATE"}}
-    BLD["build_stg_flights"]
-    VAL["validate_stg_flights"]
-    TRN["transfer_to_postgres"]
-    K1["kpi_fare_by_airline"]
-    K2["kpi_seasonal_variation"]
-    K3["kpi_bookings_by_airline"]
-    K4["kpi_popular_routes"]
-    FIN{{"assert_kpis_populated"}}
-
-    DDL1 --> ING
-    DDL1 --> SEED
-    ING --> QUA
-    SEED --> QUA
-    QUA --> GATE --> BLD --> VAL --> TRN
-    DDL2 --> TRN
-    TRN --> K1
-    TRN --> K2
-    TRN --> K3
-    TRN --> K4
-    K1 --> FIN
-    K2 --> FIN
-    K3 --> FIN
-    K4 --> FIN
-
-    ING -. "rows_ingested" .-> GATE
-    TRN -. "rows_transferred" .-> FIN
-```
-
-The two DDL branches build in parallel; the four KPI marts fan out; the gate
-sits directly between validation and the staging build; and the graph
-terminates on an assertion rather than a write.
-
-The two dotted edges are **XCom data dependencies**, created by passing a
-task's return value as an argument. They carry a single integer each — the
-ingested row count into the reject gate, the transferred count into the final
-assertion — which is exactly what XCom is for. Airflow treats them as real
-dependencies, so they appear in the UI graph too.
-
-<details>
-<summary><strong>Screenshot — the actual Airflow Graph view</strong> (click to
-expand; click the image itself to open it full-resolution)</summary>
+The Airflow Graph view of a real run — 14 tasks, left to right. Click the image
+to open it full size.
 
 | |
 |---|
 | [![Airflow Graph view of flight_price_pipeline, showing all 14 tasks and their dependencies](figures/airflow-graph-view.png)](figures/airflow-graph-view.png) |
 
-Captured from a real run. All 14 task ids match the DAG code exactly, so this
-is evidence the graph above is what actually executes, not an aspirational
-diagram. Wrapping it in a one-cell table is what gives it GitHub's native
-horizontal scrollbar if the image is wider than the page — a plain `<img>`
-would just be silently scaled down instead, since GitHub strips inline
-`style=` attributes that would otherwise force that behavior directly.
+The two DDL branches build in parallel; the four KPI marts fan out; the gate
+sits directly between validation and the staging build; and the graph
+terminates on an assertion rather than a write.
 
-</details>
+Two of the edges are **XCom data dependencies**, created by passing a task's
+return value as an argument rather than by an explicit `>>`. They carry a
+single integer each — the ingested row count into the reject gate, the
+transferred count into the final assertion — which is exactly what XCom is
+for. Airflow treats them as real dependencies, so they shape the graph above
+just like the declared ones.
 
 Three properties of this graph are deliberate:
 
