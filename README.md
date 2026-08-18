@@ -65,7 +65,7 @@ flowchart TD
     CSV -->|"ingest  · no casting"| RAW
     RAW -->|"validation rules"| REJ
     RAW -->|"cast · derive · exclude rejects"| STG
-    STG -->|"COPY FROM STDIN"| FCT
+    STG -->|"COPY FROM "| FCT
 
     REF -. "domain membership" .-> REJ
     REF -. "stopover mapping" .-> STG
@@ -74,7 +74,9 @@ flowchart TD
     FCT --> K3
     FCT --> K4
 ```
+---
 
+Graph view of flight_price_pipeline from the Airflow UI (Tap for full view)
 | |
 |---|
 | [![Airflow Graph view of flight_price_pipeline, showing all 14 tasks and their dependencies](docs/figures/airflow-graph-view.png)](docs/figures/airflow-graph-view.png) |
