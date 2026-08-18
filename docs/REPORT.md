@@ -113,6 +113,23 @@ ingested row count into the reject gate, the transferred count into the final
 assertion — which is exactly what XCom is for. Airflow treats them as real
 dependencies, so they appear in the UI graph too.
 
+<details>
+<summary><strong>Screenshot — the actual Airflow Graph view</strong> (click to
+expand; click the image itself to open it full-resolution)</summary>
+
+| |
+|---|
+| [![Airflow Graph view of flight_price_pipeline, showing all 14 tasks and their dependencies](figures/airflow-graph-view.png)](figures/airflow-graph-view.png) |
+
+Captured from a real run. All 14 task ids match the DAG code exactly, so this
+is evidence the graph above is what actually executes, not an aspirational
+diagram. Wrapping it in a one-cell table is what gives it GitHub's native
+horizontal scrollbar if the image is wider than the page — a plain `<img>`
+would just be silently scaled down instead, since GitHub strips inline
+`style=` attributes that would otherwise force that behavior directly.
+
+</details>
+
 Three properties of this graph are deliberate:
 
 **The two DDL branches are independent.** The analytics schema has no
