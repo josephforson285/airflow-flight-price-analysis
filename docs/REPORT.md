@@ -20,7 +20,7 @@
 
 ### 1.1 Layer design
 
-The pipeline moves data through four named layers. Each layer has one job.
+The pipeline moves data through four named layers with Airflow coordinating them. Each layer has one job.
 
 ```
    Flight_Price_Dataset_of_Bangladesh.csv     
