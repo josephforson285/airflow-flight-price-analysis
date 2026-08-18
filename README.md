@@ -74,6 +74,11 @@ flowchart TD
     FCT --> K3
     FCT --> K4
 ```
+
+| |
+|---|
+| [![Airflow Graph view of flight_price_pipeline, showing all 14 tasks and their dependencies](docs/figures/airflow-graph-view.png)](docs/figures/airflow-graph-view.png) |
+
 Two separate databases are in this architecture — Mysql for staging and Postgresql as the analytic database. All these orchestrated by Airflow
 
 ---
