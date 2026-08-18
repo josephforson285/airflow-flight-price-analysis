@@ -18,7 +18,7 @@ make up                   # start the stack
 make ps                   # wait until services report healthy
 ```
 
-Airflow UI → <http://localhost:8080>.
+Airflow UI also used.
 
 ```bash
 make logs S=airflow-scheduler   # tail one service
