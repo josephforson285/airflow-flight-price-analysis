@@ -29,7 +29,7 @@ The pipeline moves data through four named layers with Airflow coordinating them
                     ▼
    MySQL   raw_flight_prices                     landing zone 
                     │
-                    │  ② VALIDATE — 12 rules
+                    │  ② VALIDATE  rules
                     ├──────────────────────────► rejects_flight_prices
                     │                            
                     │  ③ CAST + DERIVE
