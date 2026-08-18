@@ -7,6 +7,9 @@ LocalExecutor, as an orchestrator and with Docker.
 > 📄 **[Full project report → `docs/REPORT.md`](docs/REPORT.md)**  — architecture,
 > task-by-task design, KPI definitions and results, data findings, challenges
 > resolved.
+>
+>  **[Reproduce this in Docker → `MANUAL.md`](MANUAL.md)** — dataset
+> placement, setup, and how to run it end to end.
 ---
 
 ## Quickstart
