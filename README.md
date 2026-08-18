@@ -2,7 +2,7 @@
 
 CSV → MySQL staging → validation → PostgreSQL analytics → KPI marts, over the
 *Flight Price Dataset of Bangladesh* (57,000 rows) from Kaggle. Airflow 3.3.1 on
-LocalExecutor, entirely in Docker.
+LocalExecutor, as an orchestrator and with Docker.
 
 > 📄 **[Full project report → `docs/REPORT.md`](docs/REPORT.md)**  — architecture,
 > task-by-task design, KPI definitions and results, data findings, challenges
