@@ -335,6 +335,8 @@ In a production setting this is the point at which one asks the data owner.
 
 **Resolution.**  This was resolved by using alternative ports.
 
+---
 
+Summing up, Airflow played a huge role in coordinating all the pipeline stages smoothly end to end.
  
  
